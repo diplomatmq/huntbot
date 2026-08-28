@@ -48,7 +48,11 @@ async def show_profile(callback: CallbackQuery):
             f"• Успешность: {success_rate}%"
         )
 
-        await callback.message.edit_text(profile_text, reply_markup=get_profile_keyboard(callback.from_user.id))
+        try:
+            await callback.message.edit_text(profile_text, reply_markup=get_profile_keyboard(callback.from_user.id))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -71,7 +75,11 @@ async def show_skills(callback: CallbackQuery):
             f"+2 макс. энергии и -1% затрат энергии за уровень"
         )
 
-        await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(callback.from_user.id, skill_points > 0))
+        try:
+            await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(callback.from_user.id, skill_points > 0))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -118,5 +126,9 @@ async def upgrade_skill(callback: CallbackQuery):
         f"+2 макс. энергии и -1% затрат энергии за уровень"
     )
     
-    await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(skill_points > 0))
+    try:
+        await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(callback.from_user.id, skill_points > 0))
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer(f"✅ {skill_name.capitalize()} улучшен!")

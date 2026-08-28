@@ -117,13 +117,21 @@ async def sell_items_menu(callback: CallbackQuery):
         if not inventory_items:
             text = "💰 <b>Продажа</b>\n\n"
             text += "У вас нет предметов для продажи!"
-            await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
+            try:
+                await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    raise
             await callback.answer()
             return
 
         text = "💰 <b>Продажа предметов</b>\n\n"
         text += "Выберите предмет для продажи:\n"
-        await callback.message.edit_text(text, reply_markup=get_sell_keyboard(callback.from_user.id, inventory_items))
+        try:
+            await callback.message.edit_text(text, reply_markup=get_sell_keyboard(callback.from_user.id, inventory_items))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -224,7 +232,11 @@ async def equip_menu(callback: CallbackQuery):
 
         text = "🔧 <b>Экипировка</b>\n\n"
         text += "Выберите оружие для экипировки:"
-        await callback.message.edit_text(text, reply_markup=get_equip_keyboard(callback.from_user.id, weapons))
+        try:
+            await callback.message.edit_text(text, reply_markup=get_equip_keyboard(callback.from_user.id, weapons))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 

@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
+from aiogram.exceptions import TelegramBadRequest
 from bot.database.db import async_session
 from bot.database.models import Weapon
 from bot.database.queries import get_or_create_user, update_energy, add_coins, consume_inventory_item, add_inventory_item
@@ -21,7 +22,11 @@ async def show_shop(callback: CallbackQuery):
             f"Выберите категорию:"
         )
 
-        await callback.message.edit_text(text, reply_markup=get_shop_keyboard(callback.from_user.id))
+        try:
+            await callback.message.edit_text(text, reply_markup=get_shop_keyboard(callback.from_user.id))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -68,7 +73,11 @@ async def show_shop_category(callback: CallbackQuery):
             currency = "💰" if item["currency"] == "coins" else "⭐"
             text += f"• {item['name']} — {currency} {item['price']}\n"
 
-        await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items))
+        try:
+            await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
