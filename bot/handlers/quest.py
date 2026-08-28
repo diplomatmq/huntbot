@@ -8,7 +8,7 @@ from bot.keyboards.quest_kb import get_quests_keyboard
 router = Router()
 
 
-@router.callback_query(F.data == "quests")
+@router.callback_query(F.data.startswith("quests_"))
 async def show_quests(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -58,7 +58,7 @@ async def show_quests(callback: CallbackQuery):
             text += "<b>Доступные квесты:</b>\nНет доступных квестов\n"
 
         try:
-            await callback.message.edit_text(text, reply_markup=get_quests_keyboard())
+            await callback.message.edit_text(text, reply_markup=get_quests_keyboard(callback.from_user.id))
         except TelegramBadRequest as e:
             if "message is not modified" not in str(e):
                 raise
@@ -67,7 +67,7 @@ async def show_quests(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("take_quest_"))
 async def take_quest(callback: CallbackQuery):
-    quest_id = int(callback.data.split("_")[2])
+    quest_id = int(callback.data.split("_")[2])  # take_quest_id_userId
     
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)

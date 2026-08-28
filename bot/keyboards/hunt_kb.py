@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def get_bait_keyboard(baits):
+def get_bait_keyboard(user_id: int, baits):
     buttons = []
 
     for bait in baits:
@@ -9,22 +9,22 @@ def get_bait_keyboard(baits):
         buttons.append([
             InlineKeyboardButton(
                 text=f"🍖 {display_name} x{bait['quantity']}",
-                callback_data=f"use_bait_{bait['id']}"
+                callback_data=f"use_bait_{bait['id']}_{user_id}"
             )
         ])
 
-    buttons.append([InlineKeyboardButton(text="🏠 Назад", callback_data="menu")])
+    buttons.append([InlineKeyboardButton(text="🏠 Назад", callback_data=f"menu_{user_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_hunt_keyboard():
+def get_hunt_keyboard(user_id: int):
     buttons = [
         [
-            InlineKeyboardButton(text="🎯 Охотиться", callback_data="hunt"),
-            InlineKeyboardButton(text="⏩ Пропустить кулдаун (1⭐)", callback_data="skip_cooldown")
+            InlineKeyboardButton(text="🎯 Охотиться", callback_data=f"hunt_{user_id}"),
+            InlineKeyboardButton(text="⏩ Пропустить кулдаун (1⭐)", callback_data=f"skip_cooldown_{user_id}")
         ],
         [
-            InlineKeyboardButton(text="🏠 Меню", callback_data="menu")
+            InlineKeyboardButton(text="🏠 Меню", callback_data=f"menu_{user_id}")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -12,7 +12,7 @@ from bot.keyboards.location_kb import get_locations_keyboard
 router = Router()
 
 
-@router.callback_query(F.data == "locations")
+@router.callback_query(F.data.startswith("locations_"))
 async def show_locations(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -47,7 +47,7 @@ async def show_locations(callback: CallbackQuery):
                 text += f"   {loc.description}\n\n"
 
         try:
-            await callback.message.edit_text(text, reply_markup=get_locations_keyboard(unlocked))
+            await callback.message.edit_text(text, reply_markup=get_locations_keyboard(callback.from_user.id, unlocked))
         except TelegramBadRequest as e:
             if "message is not modified" not in str(e):
                 raise
@@ -56,7 +56,7 @@ async def show_locations(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("travel_"))
 async def travel_to_location(callback: CallbackQuery):
-    location_id = callback.data.split("_")[1]
+    location_id = callback.data.split("_")[1]  # travel_locationId_userId
     
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)

@@ -8,7 +8,7 @@ from bot.utils.retry import retry
 router = Router()
 
 
-@router.callback_query(F.data == "profile")
+@router.callback_query(F.data.startswith("profile_"))
 @retry(retry_count=3)
 async def show_profile(callback: CallbackQuery):
     async with async_session() as session:
@@ -48,11 +48,11 @@ async def show_profile(callback: CallbackQuery):
             f"• Успешность: {success_rate}%"
         )
 
-        await callback.message.edit_text(profile_text, reply_markup=get_profile_keyboard())
+        await callback.message.edit_text(profile_text, reply_markup=get_profile_keyboard(callback.from_user.id))
         await callback.answer()
 
 
-@router.callback_query(F.data == "skills")
+@router.callback_query(F.data.startswith("skills_"))
 @retry(retry_count=3)
 async def show_skills(callback: CallbackQuery):
     async with async_session() as session:
@@ -71,14 +71,14 @@ async def show_skills(callback: CallbackQuery):
             f"+2 макс. энергии и -1% затрат энергии за уровень"
         )
 
-        await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(skill_points > 0))
+        await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(callback.from_user.id, skill_points > 0))
         await callback.answer()
 
 
 @router.callback_query(F.data.startswith("skill_"))
 @retry(retry_count=3)
 async def upgrade_skill(callback: CallbackQuery):
-    skill_name = callback.data.split("_")[1]
+    skill_name = callback.data.split("_")[1]  # skill_accuracy_userId
     
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)

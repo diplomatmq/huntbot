@@ -28,41 +28,41 @@ async def get_user_weapons(session, user_id: int):
     return result.scalars().all()
 
 
-def get_sell_keyboard(items):
+def get_sell_keyboard(user_id: int, items):
     buttons = []
     
     # Add "Sell All" button at the top if there are items to sell
     sellable_items = [item for item in items if item.item_type not in ["weapon", "potion"]]
     if sellable_items:
-        buttons.append([InlineKeyboardButton(text="💰 Продать всё", callback_data="sell_all_items")])
+        buttons.append([InlineKeyboardButton(text="💰 Продать всё", callback_data=f"sell_all_items_{user_id}")])
         buttons.append([InlineKeyboardButton(text="➖➖➖➖➖", callback_data="separator")])
     
     for item in sellable_items:
         buttons.append([
             InlineKeyboardButton(
                 text=f"Продать {format_item_name(item.item_name)} (x{item.quantity})",
-                callback_data=f"sell_item_{item.id}"
+                callback_data=f"sell_item_{item.id}_{user_id}"
             )
         ])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="inventory")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"inventory_{user_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_equip_keyboard(weapons):
+def get_equip_keyboard(user_id: int, weapons):
     buttons = []
     for weapon in weapons:
         status = " (экипирован)" if weapon.is_equipped else ""
         buttons.append([
             InlineKeyboardButton(
                 text=f"{weapon.weapon_type.capitalize()}{status}",
-                callback_data=f"equip_weapon_{weapon.id}"
+                callback_data=f"equip_weapon_{weapon.id}_{user_id}"
             )
         ])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="inventory")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"inventory_{user_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.callback_query(F.data == "inventory")
+@router.callback_query(F.data.startswith("inventory_"))
 async def show_inventory(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -101,14 +101,14 @@ async def show_inventory(callback: CallbackQuery):
             text += "Инвентарь пуст! Посетите магазин!"
 
     try:
-        await callback.message.edit_text(text, reply_markup=get_inventory_keyboard())
+        await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
 
 
-@router.callback_query(F.data == "sell_items")
+@router.callback_query(F.data.startswith("sell_items_"))
 async def sell_items_menu(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -117,19 +117,19 @@ async def sell_items_menu(callback: CallbackQuery):
         if not inventory_items:
             text = "💰 <b>Продажа</b>\n\n"
             text += "У вас нет предметов для продажи!"
-            await callback.message.edit_text(text, reply_markup=get_inventory_keyboard())
+            await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
             await callback.answer()
             return
 
         text = "💰 <b>Продажа предметов</b>\n\n"
         text += "Выберите предмет для продажи:\n"
-        await callback.message.edit_text(text, reply_markup=get_sell_keyboard(inventory_items))
+        await callback.message.edit_text(text, reply_markup=get_sell_keyboard(callback.from_user.id, inventory_items))
         await callback.answer()
 
 
 @router.callback_query(F.data.startswith("sell_item_"))
 async def sell_item(callback: CallbackQuery):
-    item_id = int(callback.data.split("_")[-1])
+    item_id = int(callback.data.split("_")[2])  # sell_item_id_userId
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         
@@ -162,7 +162,7 @@ async def sell_item(callback: CallbackQuery):
         await show_inventory(callback)
 
 
-@router.callback_query(F.data == "sell_all_items")
+@router.callback_query(F.data.startswith("sell_all_items_"))
 async def sell_all_items(callback: CallbackQuery):
     """Sell all sellable items at once"""
     async with async_session() as session:
@@ -212,7 +212,7 @@ async def sell_all_items(callback: CallbackQuery):
         await show_inventory(callback)
 
 
-@router.callback_query(F.data == "equip")
+@router.callback_query(F.data.startswith("equip_"))
 async def equip_menu(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -224,13 +224,13 @@ async def equip_menu(callback: CallbackQuery):
 
         text = "🔧 <b>Экипировка</b>\n\n"
         text += "Выберите оружие для экипировки:"
-        await callback.message.edit_text(text, reply_markup=get_equip_keyboard(weapons))
+        await callback.message.edit_text(text, reply_markup=get_equip_keyboard(callback.from_user.id, weapons))
         await callback.answer()
 
 
 @router.callback_query(F.data.startswith("equip_weapon_"))
 async def equip_weapon(callback: CallbackQuery):
-    weapon_id = int(callback.data.split("_")[-1])
+    weapon_id = int(callback.data.split("_")[2])  # equip_weapon_id_userId
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         weapons = await get_user_weapons(session, user.id)

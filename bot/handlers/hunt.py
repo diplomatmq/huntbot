@@ -473,14 +473,14 @@ async def cmd_bait(message: Message):
         await message.answer(
             "🍖 <b>Выберите приманку</b>\n\n"
             "После выбора она сразу активируется и потратит 4 энергии.",
-            reply_markup=get_bait_keyboard(baits),
+            reply_markup=get_bait_keyboard(message.from_user.id, baits),
             reply_to_message_id=message.message_id
         )
 
 
 @router.callback_query(F.data.startswith("use_bait_"))
 async def use_bait(callback: CallbackQuery):
-    bait_id = int(callback.data.split("_")[-1])
+    bait_id = int(callback.data.split("_")[2])  # use_bait_id_userId
     logger.info(f"[CMD] User {callback.from_user.id} (@{callback.from_user.username}) selected bait id={bait_id}")
 
     async with async_session() as session:
@@ -592,7 +592,7 @@ async def cmd_rest(message: Message):
         )
 
 
-@router.callback_query(F.data == "hunt")
+@router.callback_query(F.data.startswith("hunt_"))
 async def callback_hunt(callback: CallbackQuery):
     await callback.answer()
     # Create a dummy message-like object with answer method and from_user
@@ -606,7 +606,7 @@ async def callback_hunt(callback: CallbackQuery):
     await cmd_hunt(DummyMessage(callback))
 
 
-@router.callback_query(F.data == "skip_cooldown")
+@router.callback_query(F.data.startswith("skip_cooldown_"))
 async def skip_cooldown(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -620,7 +620,7 @@ async def skip_cooldown(callback: CallbackQuery):
         await session.commit()
 
         await callback.answer("✅ Кулдаун пропущен!")
-        await callback.message.edit_reply_markup(reply_markup=get_hunt_keyboard())
+        await callback.message.edit_reply_markup(reply_markup=get_hunt_keyboard(callback.from_user.id))
 
 
 @router.pre_checkout_query(F.invoice_payload.startswith("guaranteed_"))

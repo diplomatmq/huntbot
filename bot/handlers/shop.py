@@ -8,7 +8,7 @@ from bot.keyboards.shop_kb import get_shop_keyboard, get_shop_category_keyboard,
 router = Router()
 
 
-@router.callback_query(F.data == "shop")
+@router.callback_query(F.data.startswith("shop_"))
 async def show_shop(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -21,13 +21,13 @@ async def show_shop(callback: CallbackQuery):
             f"Выберите категорию:"
         )
 
-        await callback.message.edit_text(text, reply_markup=get_shop_keyboard())
+        await callback.message.edit_text(text, reply_markup=get_shop_keyboard(callback.from_user.id))
         await callback.answer()
 
 
 @router.callback_query(F.data.startswith("shop_category_"))
 async def show_shop_category(callback: CallbackQuery):
-    category = callback.data.split("_")[2]
+    category = callback.data.split("_")[2]  # shop_category_weapons_userId
 
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -68,7 +68,7 @@ async def show_shop_category(callback: CallbackQuery):
             currency = "💰" if item["currency"] == "coins" else "⭐"
             text += f"• {item['name']} — {currency} {item['price']}\n"
 
-        await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(category, items))
+        await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items))
         await callback.answer()
 
 
@@ -81,9 +81,10 @@ async def buy_item(callback: CallbackQuery):
     
     item_data = callback.data.split("_", 1)[1]
     parts = item_data.split("_")
-    item_name = "_".join(parts[:-2]).replace("_", " ")
-    price = int(parts[-2])
-    currency = parts[-1]
+    item_name = "_".join(parts[:-3]).replace("_", " ")
+    price = int(parts[-3])
+    currency = parts[-2]
+    # Last part is user_id, ignored here as middleware already checked it
     
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
@@ -118,7 +119,7 @@ async def buy_item(callback: CallbackQuery):
                 f"🧪 {item_name.capitalize()}\n"
                 f"💰 Цена: {price} ⭐\n\n"
                 f"Нажмите на ссылку для оплаты:",
-                reply_markup=get_payment_keyboard(invoice_link)
+                reply_markup=get_payment_keyboard(callback.from_user.id, invoice_link)
             )
             await callback.answer("✅ Ссылка на оплату отправлена!")
             return

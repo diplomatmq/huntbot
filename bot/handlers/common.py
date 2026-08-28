@@ -28,7 +28,7 @@ async def cmd_start(message: Message):
             f"💰 Монеты: {user.coins}\n"
             f"⭐ Звёзды: {user.stars}\n"
             f"📊 Уровень: {user.level}",
-            reply_markup=get_main_menu_keyboard(user.game_mode),
+            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode),
             reply_to_message_id=message.message_id
         )
 
@@ -49,7 +49,7 @@ async def cmd_menu(message: Message):
             f"💰 Монеты: {user.coins}\n"
             f"⭐ Звёзды: {user.stars}\n"
             f"📊 Уровень: {user.level}",
-            reply_markup=get_main_menu_keyboard(user.game_mode),
+            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode),
             reply_to_message_id=message.message_id
         )
 
@@ -84,7 +84,7 @@ async def cmd_help(message: Message):
     await message.answer(help_text, reply_to_message_id=message.message_id)
 
 
-@router.callback_query(F.data == "toggle_mode")
+@router.callback_query(F.data.startswith("toggle_mode_"))
 @retry(retry_count=3)
 async def toggle_mode(callback: CallbackQuery):
     async with async_session() as session:
@@ -114,7 +114,7 @@ async def toggle_mode(callback: CallbackQuery):
                 raise
 
 
-@router.callback_query(F.data == "auction")
+@router.callback_query(F.data.startswith("auction_"))
 @retry(retry_count=3)
 async def show_auction(callback: CallbackQuery):
     await callback.answer()
@@ -122,14 +122,14 @@ async def show_auction(callback: CallbackQuery):
         await callback.message.edit_text(
             "🏆 <b>Аукцион</b>\n\n"
             "Функционал аукциона в разработке!",
-            reply_markup=get_main_menu_keyboard("free")  # Temporarily
+            reply_markup=get_main_menu_keyboard(callback.from_user.id, "free")  # Temporarily
         )
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
 
 
-@router.callback_query(F.data == "menu")
+@router.callback_query(F.data.startswith("menu_"))
 @retry(retry_count=3)
 async def show_menu(callback: CallbackQuery):
     async with async_session() as session:
