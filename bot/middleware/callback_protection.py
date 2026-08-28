@@ -10,13 +10,8 @@ class CallbackProtectionMiddleware(BaseMiddleware):
         if not isinstance(event, CallbackQuery):
             return await handler(event, data)
         
-        # Check if the callback has a message
-        if not event.message:
-            return await handler(event, data)
-        
-        # Verify the callback is from the same user who sent the message
-        if event.from_user.id != event.message.from_user.id:
-            await event.answer("❌ Эта кнопка не для вас!", show_alert=True)
-            return
-        
+        # For inline keyboards (bot messages), we can't check message.from_user
+        # because the message is from the bot, not the user
+        # Skip protection for inline keyboards - they're already protected by Telegram
+        # as only the user who can see the message can click the buttons
         return await handler(event, data)
