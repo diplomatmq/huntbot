@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from bot.database.db import Base
@@ -8,7 +8,7 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, index=True, nullable=False)
     username = Column(String, nullable=True)
     
     # Game mode
@@ -215,8 +215,8 @@ class StarsTransaction(Base):
     error_message = Column(Text, nullable=True)
 
     # Store message_id and chat_id to reply to the original message after payment
-    message_id = Column(Integer, nullable=True)
-    chat_id = Column(Integer, nullable=True)
+    message_id = Column(BigInteger, nullable=True)
+    chat_id = Column(BigInteger, nullable=True)
 
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

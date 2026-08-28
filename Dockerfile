@@ -15,9 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create a non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Run database seeding and then start the bot
-CMD ["sh", "-c", "python seed_data.py && python main.py"]
+CMD ["sh", "-c", "python migrate_to_bigint.py && python seed_data.py && python main.py"]
