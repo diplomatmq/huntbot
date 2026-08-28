@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from bot.keyboards.main_kb import get_main_menu_keyboard
 from bot.database.db import async_session
 from bot.database.queries import get_or_create_user
@@ -107,9 +107,9 @@ async def toggle_mode(callback: CallbackQuery):
                 f"💰 Монеты: {user.coins}\n"
                 f"⭐ Звёзды: {user.stars}\n"
                 f"📊 Уровень: {user.level}",
-                reply_markup=get_main_menu_keyboard(user.game_mode)
+                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode)
             )
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
 
@@ -148,8 +148,8 @@ async def show_menu(callback: CallbackQuery):
                 f"💰 Монеты: {user.coins}\n"
                 f"⭐ Звёзды: {user.stars}\n"
                 f"📊 Уровень: {user.level}",
-                reply_markup=get_main_menu_keyboard(user.game_mode)
+                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode)
             )
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise

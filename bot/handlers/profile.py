@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from bot.database.db import async_session
 from bot.database.queries import get_or_create_user, update_energy
 from bot.keyboards.profile_kb import get_profile_keyboard, get_skills_keyboard
@@ -50,7 +51,7 @@ async def show_profile(callback: CallbackQuery):
 
         try:
             await callback.message.edit_text(profile_text, reply_markup=get_profile_keyboard(callback.from_user.id))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()
@@ -77,7 +78,7 @@ async def show_skills(callback: CallbackQuery):
 
         try:
             await callback.message.edit_text(skills_text, reply_markup=get_skills_keyboard(callback.from_user.id, skill_points > 0))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()

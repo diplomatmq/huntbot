@@ -254,12 +254,20 @@ async def get_active_quests(session: AsyncSession, user_id: int) -> list[UserQue
     return result.scalars().all()
 
 
-async def get_available_quests(session: AsyncSession, user_level: int, location: str) -> list[Quest]:
+async def get_available_quests(session: AsyncSession, user_level: int, location: str, user_id: int) -> list[Quest]:
+    # Get quest IDs that user already has (active or completed)
+    user_quests_result = await session.execute(
+        select(UserQuest.quest_id).where(UserQuest.user_id == user_id)
+    )
+    taken_quest_ids = set(q[0] for q in user_quests_result.all())
+    
+    # Get available quests excluding already taken ones
     result = await session.execute(
         select(Quest).where(
             and_(
                 Quest.required_level <= user_level,
-                Quest.location == location
+                Quest.location == location,
+                ~Quest.id.in_(taken_quest_ids) if taken_quest_ids else True
             )
         )
     )

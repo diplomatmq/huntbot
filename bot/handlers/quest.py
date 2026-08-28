@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from bot.database.db import async_session
 from bot.database.queries import get_or_create_user, update_energy, get_active_quests, get_available_quests
 from bot.keyboards.quest_kb import get_quests_keyboard
@@ -19,7 +19,7 @@ async def show_quests(callback: CallbackQuery):
             return
 
         active_quests = await get_active_quests(session, user.id)
-        available_quests = await get_available_quests(session, user.level, user.current_location)
+        available_quests = await get_available_quests(session, user.level, user.current_location, user.id)
 
         text = "📜 <b>Квесты</b>\n\n"
 
@@ -41,6 +41,7 @@ async def show_quests(callback: CallbackQuery):
 
                 quest_type = "📖 Сюжет" if quest.quest_type == "main" else "📋 Побочный"
                 text += f"\n{quest_type} • {quest.title}\n"
+                text += f"   {quest.description}\n"
                 text += f"   {progress_text}\n"
         else:
             text += "<b>Активные квесты:</b>\nНет активных квестов\n"
@@ -59,7 +60,7 @@ async def show_quests(callback: CallbackQuery):
 
         try:
             await callback.message.edit_text(text, reply_markup=get_quests_keyboard(callback.from_user.id))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()

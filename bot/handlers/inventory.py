@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from sqlalchemy import select
 from bot.database.db import async_session
 from bot.database.models import Inventory, Weapon
@@ -119,7 +119,7 @@ async def sell_items_menu(callback: CallbackQuery):
             text += "У вас нет предметов для продажи!"
             try:
                 await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
-            except TelegramBadRequest as e:
+            except (TelegramBadRequest, TelegramRetryAfter) as e:
                 if "message is not modified" not in str(e):
                     raise
             await callback.answer()
@@ -129,7 +129,7 @@ async def sell_items_menu(callback: CallbackQuery):
         text += "Выберите предмет для продажи:\n"
         try:
             await callback.message.edit_text(text, reply_markup=get_sell_keyboard(callback.from_user.id, inventory_items))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()
@@ -234,7 +234,7 @@ async def equip_menu(callback: CallbackQuery):
         text += "Выберите оружие для экипировки:"
         try:
             await callback.message.edit_text(text, reply_markup=get_equip_keyboard(callback.from_user.id, weapons))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()

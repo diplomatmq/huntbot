@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from bot.database.db import async_session
 from bot.database.queries import get_or_create_user, update_energy
 from bot.game_logic.locations import (
@@ -48,7 +48,7 @@ async def show_locations(callback: CallbackQuery):
 
         try:
             await callback.message.edit_text(text, reply_markup=get_locations_keyboard(callback.from_user.id, unlocked))
-        except TelegramBadRequest as e:
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()
