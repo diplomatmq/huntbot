@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: huntbot_postgres
+    environment:
+      POSTGRES_USER: huntbot
+      POSTGRES_PASSWORD: huntbot_password
+      POSTGRES_DB: huntbot_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huntbot -d huntbot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    container_name: huntbot
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://huntbot:huntbot_password@postgres:5432/huntbot_db
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_IDS: ${ADMIN_IDS}
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: huntbot_redis
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
