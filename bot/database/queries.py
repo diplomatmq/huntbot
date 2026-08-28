@@ -214,12 +214,12 @@ async def update_location_progress(session: AsyncSession, user: User, location: 
 async def add_exp(session: AsyncSession, user: User, exp: int) -> User:
     user.exp += exp
     
-    # Level up logic: 100 exp per level
-    exp_needed = user.level * 100
+    # Level up logic: exponential curve - harder to level up
+    exp_needed = user.level * user.level * 100
     while user.exp >= exp_needed:
         user.exp -= exp_needed
         user.level += 1
-        exp_needed = user.level * 100
+        exp_needed = user.level * user.level * 100
     
     await session.commit()
     await session.refresh(user)

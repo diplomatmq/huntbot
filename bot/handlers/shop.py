@@ -34,21 +34,21 @@ async def show_shop_category(callback: CallbackQuery):
 
         shop_items = {
             "weapons": [
-                {"name": "Лук", "price": 100, "currency": "coins", "type": "bow"},
-                {"name": "Арбалет", "price": 500, "currency": "coins", "type": "crossbow"},
-                {"name": "Винтовка", "price": 1000, "currency": "coins", "type": "rifle"},
-                {"name": "Дробовик", "price": 800, "currency": "coins", "type": "shotgun"},
+                {"name": "Лук", "price": 500, "currency": "coins", "type": "bow"},
+                {"name": "Арбалет", "price": 2500, "currency": "coins", "type": "crossbow"},
+                {"name": "Винтовка", "price": 15000, "currency": "coins", "type": "rifle"},
+                {"name": "Дробовик", "price": 10000, "currency": "coins", "type": "shotgun"},
             ],
             "ammo": [
-                {"name": "Стрелы (10шт)", "price": 20, "currency": "coins", "type": "arrows"},
-                {"name": "Патроны (10шт)", "price": 50, "currency": "coins", "type": "bullets"},
+                {"name": "Стрелы (10шт)", "price": 50, "currency": "coins", "type": "arrows"},
+                {"name": "Патроны (10шт)", "price": 100, "currency": "coins", "type": "bullets"},
             ],
             "bait": [
-                {"name": "Приманка травоядная", "price": 10, "currency": "coins", "type": "bait_herbivore"},
-                {"name": "Приманка хищная", "price": 15, "currency": "coins", "type": "bait_predator"},
+                {"name": "Приманка травоядная", "price": 25, "currency": "coins", "type": "bait_herbivore"},
+                {"name": "Приманка хищная", "price": 35, "currency": "coins", "type": "bait_predator"},
             ],
             "potions": [
-                {"name": "Зелье энергии", "price": 50, "currency": "coins", "type": "potion_energy"},
+                {"name": "Зелье энергии", "price": 100, "currency": "coins", "type": "potion_energy"},
                 {"name": "Зелье удачи", "price": 5, "currency": "stars", "type": "potion_luck"},
             ]
         }

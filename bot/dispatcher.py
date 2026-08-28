@@ -3,6 +3,7 @@ import logging
 from aiogram import Dispatcher
 from aiogram.exceptions import TelegramRetryAfter
 from bot.middleware.energy import EnergyMiddleware
+from bot.middleware.callback_protection import CallbackProtectionMiddleware
 from bot.handlers import common, hunt, shop, inventory, location, quest, profile, admin
 
 
@@ -15,6 +16,7 @@ async def get_dispatcher() -> Dispatcher:
     # Add middlewares
     dp.message.middleware(EnergyMiddleware())
     dp.callback_query.middleware(EnergyMiddleware())
+    dp.callback_query.middleware(CallbackProtectionMiddleware())
     
     # Error handler for TelegramRetryAfter
     @dp.errors()

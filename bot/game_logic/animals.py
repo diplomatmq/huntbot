@@ -19,11 +19,11 @@ class AnimalData:
 
 # Rarity multipliers
 RARITY_MULTIPLIERS = {
-    "common": {"exp": 1.0, "coins": 1.0},
-    "uncommon": {"exp": 1.5, "coins": 1.5},
-    "rare": {"exp": 2.5, "coins": 2.5},
-    "epic": {"exp": 4.0, "coins": 4.0},
-    "legendary": {"exp": 7.0, "coins": 7.0}
+    "common": {"exp": 0.5, "coins": 0.5},
+    "uncommon": {"exp": 0.8, "coins": 0.8},
+    "rare": {"exp": 1.2, "coins": 1.2},
+    "epic": {"exp": 2.0, "coins": 2.0},
+    "legendary": {"exp": 3.5, "coins": 3.5}
 }
 
 
