@@ -365,3 +365,85 @@ async def equip_weapon(callback: CallbackQuery):
 
         await callback.answer(f"✅ Экипировано {selected_weapon.weapon_type.capitalize()}!", show_alert=True)
         await show_inventory(callback)
+
+
+def get_potions_keyboard(user_id: int, potions):
+    buttons = []
+    for potion in potions:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{potion.item_name} x{potion.quantity}",
+                callback_data=f"use_potion_{potion.id}_{user_id}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"inventory_{user_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("use_potions_"))
+@retry(retry_count=3)
+async def use_potions_menu(callback: CallbackQuery):
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        inventory_items = await get_user_inventory_items(session, user.id)
+        potions = [item for item in inventory_items if item.item_type == "potion"]
+
+        if not potions:
+            text = "🧪 <b>Зелья</b>\n\nУ вас нет зелий! Посетите магазин!"
+            try:
+                await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
+            except (TelegramBadRequest, TelegramRetryAfter) as e:
+                if "message is not modified" not in str(e):
+                    raise
+            await callback.answer()
+            return
+
+        text = "🧪 <b>Зелья</b>\n\nВыберите зелье для использования:"
+        try:
+            await callback.message.edit_text(text, reply_markup=get_potions_keyboard(callback.from_user.id, potions))
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
+            if "message is not modified" not in str(e):
+                raise
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("use_potion_"))
+@retry(retry_count=3)
+async def use_potion(callback: CallbackQuery):
+    potion_id = int(callback.data.split("_")[2])
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        result = await session.execute(select(Inventory).where(Inventory.id == potion_id, Inventory.user_id == user.id))
+        potion = result.scalar_one_or_none()
+
+        if not potion:
+            await callback.answer("❌ Зелье не найдено!", show_alert=True)
+            return
+
+        if potion.item_type != "potion":
+            await callback.answer("❌ Это не зелье!", show_alert=True)
+            return
+
+        # Apply potion effects
+        effect_text = ""
+        if "энергия" in potion.item_name.lower():
+            energy_gain = 20
+            user = await update_energy(session, user, energy_gain)
+            effect_text = f"⚡ +{energy_gain} энергии"
+        elif "удача" in potion.item_name.lower():
+            if not user.active_buffs:
+                user.active_buffs = {}
+            user.active_buffs["luck"] = {"type": "luck", "uses": 5}
+            effect_text = "🍀 +5 попыток с повышенной удачей"
+        else:
+            await callback.answer("❌ Неизвестное зелье!", show_alert=True)
+            return
+
+        # Remove potion from inventory
+        potion.quantity -= 1
+        if potion.quantity <= 0:
+            await session.delete(potion)
+        await session.commit()
+
+        await callback.answer(f"✅ Использовано {potion.item_name}! {effect_text}", show_alert=True)
+        await show_inventory(callback)
