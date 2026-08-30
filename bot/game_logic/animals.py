@@ -433,13 +433,12 @@ def generate_drops(animal: AnimalData) -> Dict[str, int]:
 
 
 
-# Animal strength levels (for wound mechanics) - INCREASED KILL CHANCES
 ANIMAL_STRENGTH = {
-    "common": {"bow_kill_chance": 0.98, "crossbow_kill_chance": 1.0, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 1.0},
-    "uncommon": {"bow_kill_chance": 0.90, "crossbow_kill_chance": 0.98, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 1.0},
-    "rare": {"bow_kill_chance": 0.70, "crossbow_kill_chance": 0.90, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 0.98},
-    "epic": {"bow_kill_chance": 0.35, "crossbow_kill_chance": 0.65, "rifle_kill_chance": 0.95, "shotgun_kill_chance": 0.85},
-    "legendary": {"bow_kill_chance": 0.10, "crossbow_kill_chance": 0.30, "rifle_kill_chance": 0.80, "shotgun_kill_chance": 0.60},
+    "common": {"bow_kill_chance": 1.0, "crossbow_kill_chance": 1.0, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 1.0},
+    "uncommon": {"bow_kill_chance": 0.98, "crossbow_kill_chance": 1.0, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 1.0},
+    "rare": {"bow_kill_chance": 0.88, "crossbow_kill_chance": 0.96, "rifle_kill_chance": 1.0, "shotgun_kill_chance": 0.99},
+    "epic": {"bow_kill_chance": 0.60, "crossbow_kill_chance": 0.80, "rifle_kill_chance": 0.98, "shotgun_kill_chance": 0.92},
+    "legendary": {"bow_kill_chance": 0.30, "crossbow_kill_chance": 0.55, "rifle_kill_chance": 0.90, "shotgun_kill_chance": 0.78},
 }
 
 
@@ -454,9 +453,11 @@ def can_kill_animal(weapon_type: str, animal: AnimalData) -> tuple[bool, float]:
     """
     strength = ANIMAL_STRENGTH.get(animal.rarity, ANIMAL_STRENGTH["common"])
     kill_chance = strength.get(f"{weapon_type}_kill_chance", 1.0)
+
+    if kill_chance >= 1.0:
+        return True, kill_chance
     
-    # Roll for kill
     roll = random.random()
-    killed = roll <= kill_chance
+    killed = roll < kill_chance
     
     return killed, kill_chance

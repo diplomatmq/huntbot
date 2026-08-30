@@ -27,6 +27,66 @@ from bot.config import HUNT_COOLDOWN, BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
+
+def _animal_name_matches(hunted_name: str, target_name: str) -> bool:
+    a = hunted_name.strip().lower()
+    t = target_name.strip().lower()
+    if a == t:
+        return True
+    if t in a or a in t:
+        return True
+    a_tokens = set(a.replace("-", " ").replace("ё", "е").split())
+    t_tokens = set(t.replace("-", " ").replace("ё", "е").split())
+    core_a = {tok for tok in a_tokens if tok not in {"молодой", "большой", "маленький", "северный", "легендарный", "призрачный", "рыжий", "благородный", "болотный", "гигантский", "пустынный", "песчаный", "горный", "дух", "глухого", "степной"}}
+    core_t = {tok for tok in t_tokens if tok not in {"молодой", "большой", "маленький", "северный", "легендарный", "призрачный", "рыжий", "благородный", "болотный", "гигантский", "пустынный", "песчаный", "горный", "дух", "глухого", "степной"}}
+    if core_a & core_t:
+        return True
+    return False
+
+
+ITEM_ALIASES = {
+    "шкура": "skin", "шкуры": "skin", "шкур": "skin", "скин": "skin",
+    "клык": "fangs", "клыки": "fangs", "клыка": "fangs",
+    "коготь": "claws", "когти": "claws", "когтя": "claws",
+    "рог": "horns", "рога": "horns",
+    "бивень": "tusks", "бивни": "tusks", "клык_кабана": "tusks", "бивня": "tusks",
+    "кожа": "hide", "шкура_толстая": "hide",
+    "зуб": "teeth", "зубы": "teeth",
+    "перо": "feathers", "перья": "feathers",
+    "мясо": "meat", "мяса": "meat",
+    "зуб_крокодила": "croc_teeth", "зуб_кашалота": "whale_tooth",
+    "чешуйка": "scales", "чешуйки": "scales",
+    "плавник": "fin", "плавники": "fin",
+    "жало": "stinger", "жала": "stinger",
+}
+
+_ITEM_KEYWORDS = {}
+for ru_name, drop_name in ITEM_ALIASES.items():
+    _ITEM_KEYWORDS[ru_name.lower().replace("ё", "е")] = drop_name
+
+
+def _resolve_drop_name(target_item: str) -> str:
+    t = target_item.strip().lower().replace("ё", "е")
+    if t in ITEM_ALIASES.values():
+        return t
+    tokens = t.replace("-", " ").replace("_", " ").split()
+    for tok in tokens:
+        if tok in _ITEM_KEYWORDS:
+            return _ITEM_KEYWORDS[tok]
+    for kw, drop in _ITEM_KEYWORDS.items():
+        if kw in t or t in kw:
+            return drop
+    return t
+
+
+def _item_name_matches(drop_item: str, target_item: str) -> bool:
+    d = drop_item.strip().lower().replace("ё", "е")
+    resolved = _resolve_drop_name(target_item)
+    r = resolved.strip().lower().replace("ё", "е")
+    if d == r:
+        return True
+    return r in d or d in r
+
 router = Router()
 
 # Sticker directory
@@ -104,45 +164,45 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                 logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) WOUNDED {animal.name}")
                 
                 # Update statistics based on mode
-            if user.game_mode == "free":
-                user.total_hunts_free += 1
-            else:
-                user.total_hunts_story += 1
-            
-            # Reset track uses after wound
-            user.track_uses = 0
-            
-            # Commit changes
-            await session.commit()
-            
-            # Update cooldown
-            user = await update_hunt_cooldown(session, user)
-            
-            # Small exp reward for wounding
-            exp_reward = 5
-            user = await add_exp(session, user, exp_reward)
-            
-            rarity_emoji = {
-                "common": "⚪",
-                "uncommon": "🟢",
-                "rare": "🔵",
-                "epic": "🟣",
-                "legendary": "🟡"
-            }
-            
-            await message_obj.answer(
-                f"💔 <b>Ранено!</b>\n\n"
-                f"{rarity_emoji.get(animal.rarity, '⚪')} {animal.emoji} <b>{animal.name}</b>\n"
-                f"Редкость: {animal.rarity}\n\n"
-                f"Ваше оружие ({weapon_type}) не смогло убить животное!\n"
-                f"Животное ранено и сбежало...\n\n"
-                f"💡 Шанс убийства: {int(kill_chance * 100)}%\n"
-                f"📊 +{exp_reward} опыта за попытку\n\n"
-                f"📍 Локация: {location.emoji} {location.name}\n"
-                f"⚡ Энергия: {user.energy}/{user.max_energy}",
-                reply_to_message_id=reply_to_message_id
-            )
-            return
+                if user.game_mode == "free":
+                    user.total_hunts_free += 1
+                else:
+                    user.total_hunts_story += 1
+                
+                # Reset track uses after wound
+                user.track_uses = 0
+                
+                # Commit changes
+                await session.commit()
+                
+                # Update cooldown
+                user = await update_hunt_cooldown(session, user)
+                
+                # Small exp reward for wounding
+                exp_reward = 5
+                user = await add_exp(session, user, exp_reward)
+                
+                rarity_emoji = {
+                    "common": "⚪",
+                    "uncommon": "🟢",
+                    "rare": "🔵",
+                    "epic": "🟣",
+                    "legendary": "🟡"
+                }
+                
+                await message_obj.answer(
+                    f"💔 <b>Ранено!</b>\n\n"
+                    f"{rarity_emoji.get(animal.rarity, '⚪')} {animal.emoji} <b>{animal.name}</b>\n"
+                    f"Редкость: {animal.rarity}\n\n"
+                    f"Ваше оружие ({weapon_type}) не смогло убить животное!\n"
+                    f"Животное ранено и сбежало...\n\n"
+                    f"💡 Шанс убийства: {int(kill_chance * 100)}%\n"
+                    f"📊 +{exp_reward} опыта за попытку\n\n"
+                    f"📍 Локация: {location.emoji} {location.name}\n"
+                    f"⚡ Энергия: {user.energy}/{user.max_energy}",
+                    reply_to_message_id=reply_to_message_id
+                )
+                return
         
         # Animal killed
         logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) KILLED {animal.name}")
@@ -182,10 +242,11 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
 
             for uq in active_quests:
                 quest = uq.quest
+
                 if quest.conditions.get("kill"):
                     target_animal = quest.conditions["kill"]["animal"]
                     required_count = quest.conditions["kill"]["count"]
-                    if animal.name == target_animal:
+                    if _animal_name_matches(animal.name, target_animal):
                         uq.progress["killed"] = uq.progress.get("killed", 0) + 1
                         current_killed = uq.progress["killed"]
                         remaining = required_count - current_killed
@@ -193,23 +254,49 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                         if remaining > 0:
                             quest_progress_text += f"\n📜 Квест: {quest.title}\n   Осталось словить: {remaining} {target_animal}\n"
                         else:
-                            # Quest completed
                             uq.status = "completed"
                             uq.completed_at = datetime.utcnow()
                             completed_quests.append(quest)
 
-                            # Give quest rewards
                             user = await add_exp(session, user, quest.reward_exp)
                             user = await add_coins(session, user, quest.reward_coins)
                             user.stars += quest.reward_stars
 
-                            # Add reward items
                             for reward_item in quest.reward_items:
                                 item_name = reward_item["item"]
                                 quantity = reward_item["quantity"]
                                 await add_inventory_item(session, user.id, item_name, "material", quantity)
 
-                            # Update location progress
+                            user = await update_location_progress(session, user, quest.location, quest.progress_reward)
+
+                if quest.conditions.get("collect") and drops:
+                    target_item = quest.conditions["collect"]["item"]
+                    required_count = quest.conditions["collect"]["count"]
+                    collected_now = 0
+                    for drop_name, drop_qty in drops.items():
+                        if _item_name_matches(drop_name, target_item):
+                            collected_now += drop_qty
+                    if collected_now > 0:
+                        uq.progress["collected"] = uq.progress.get("collected", 0) + collected_now
+                        current_collected = uq.progress["collected"]
+                        remaining = required_count - current_collected
+
+                        if remaining > 0:
+                            quest_progress_text += f"\n📜 Квест: {quest.title}\n   Осталось собрать: {max(remaining, 0)} {target_item}\n"
+                        else:
+                            uq.status = "completed"
+                            uq.completed_at = datetime.utcnow()
+                            completed_quests.append(quest)
+
+                            user = await add_exp(session, user, quest.reward_exp)
+                            user = await add_coins(session, user, quest.reward_coins)
+                            user.stars += quest.reward_stars
+
+                            for reward_item in quest.reward_items:
+                                item_name = reward_item["item"]
+                                quantity = reward_item["quantity"]
+                                await add_inventory_item(session, user.id, item_name, "material", quantity)
+
                             user = await update_location_progress(session, user, quest.location, quest.progress_reward)
         
         # Commit changes after modifying user stats/quests
@@ -280,14 +367,22 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
 
         # Send completion messages for completed quests
         for quest in completed_quests:
+            mention = ""
+            if user.username:
+                mention = f"@{user.username}"
+            else:
+                mention = f'<a href="tg://user?id={user.telegram_id}">{user.first_name or "Охотник"}</a>'
+            quest_type_label = "📖 СЮЖЕТНЫЙ" if quest.quest_type == "main" else "📋 ПОБОЧНЫЙ"
             await message_obj.answer(
-                f"🎉 <b>Квест выполнен!</b>\n\n"
-                f"📜 {quest.title}\n"
+                f"🎉 <b>{quest_type_label} КВЕСТ ВЫПОЛНЕН!</b>\n\n"
+                f"👤 {mention}\n\n"
+                f"📜 <b>{quest.title}</b>\n"
                 f"{quest.description}\n\n"
-                f"🎁 Награды:\n"
+                f"🎁 Награды получены:\n"
                 f"• +{quest.reward_exp} опыта\n"
                 f"• +{quest.reward_coins} монет\n"
-                f"• +{quest.reward_stars} звёзд",
+                f"• +{quest.reward_stars} звёзд"
+                + (f"\n• Прогресс локации +{quest.progress_reward}%" if quest.progress_reward else ""),
                 reply_to_message_id=reply_to_message_id
             )
     else:

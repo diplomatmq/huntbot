@@ -33,7 +33,17 @@ async def cmd_start(message: Message):
         )
 
 
-@router.message(lambda msg: msg.text and msg.text.split()[0].lower() in ["/menu", "меню"])
+def _is_menu_hant_command(text: str) -> bool:
+    if not text:
+        return False
+    t = text.strip().lower().replace("ё", "е")
+    tokens = t.split()[:2]
+    if len(tokens) < 2:
+        return False
+    return tokens[0] in {"меню", "menu", "/menu"} and tokens[1] in {"хант", "hant", "охота", "hunt"}
+
+
+@router.message(lambda msg: _is_menu_hant_command(msg.text or ""))
 async def cmd_menu(message: Message):
     async with async_session() as session:
         user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
@@ -59,6 +69,7 @@ async def cmd_help(message: Message):
     help_text = (
         "📖 <b>Справка по игре «Охота»</b>\n\n"
         "<b>Команды в чате:</b>\n"
+        "• <code>меню хант</code> / <code>menu hunt</code> — Открыть главное меню\n"
         "• <code>хант</code> или <code>выстрел</code> — Охотиться (5 энергии)\n"
         "• <code>след</code> — Найти следы (+20% шанс редкого животного, 3 энергии)\n"
         "• <code>приманка</code> — Выбрать и установить приманку (4 энергии)\n"
@@ -89,19 +100,36 @@ async def cmd_help(message: Message):
 async def toggle_mode(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
-        user.game_mode = "story" if user.game_mode == "free" else "free"
+        new_mode = "story" if user.game_mode == "free" else "free"
+        user.game_mode = new_mode
+
+        if new_mode == "story":
+            from bot.game_logic.locations import get_unlocked_locations, get_location_order
+            unlocked_story = get_unlocked_locations(user.location_progress, "story")
+            order = get_location_order()
+            unlocked_ids = [loc.id for loc in unlocked_story]
+            best_loc_id = "forest"
+            for loc_id in order:
+                if loc_id in unlocked_ids:
+                    best_loc_id = loc_id
+            user.current_location = best_loc_id
+
         await session.commit()
         await session.refresh(user)
 
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
         location = get_location(user.current_location)
 
+        extra_note = ""
+        if new_mode == "story":
+            extra_note = f"\n⚠️ Локация автоматически изменена на доступную в сюжете"
+
         await callback.answer(f"✅ Режим изменён на {mode_text}!")
 
         try:
             await callback.message.edit_text(
                 f"🦌 <b>Главное меню</b>\n\n"
-                f"🎮 Режим: {mode_text}\n"
+                f"🎮 Режим: {mode_text}{extra_note}\n"
                 f"📍 Текущая локация: {location.emoji} {location.name}\n"
                 f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
                 f"💰 Монеты: {user.coins}\n"

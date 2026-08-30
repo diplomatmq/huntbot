@@ -32,10 +32,11 @@ async def show_profile(callback: CallbackQuery):
 
         success_rate = int(successful_hunts / total_hunts * 100) if total_hunts > 0 else 0
 
+        exp_needed = user.level * user.level * 100
         profile_text = (
             f"👤 <b>Профиль охотника</b>\n\n"
             f"📊 Уровень: {user.level}\n"
-            f"⭐ Опыт: {user.exp}/{user.level * 100}\n\n"
+            f"⭐ Опыт: {user.exp}/{exp_needed}\n\n"
             f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
             f"💰 Монеты: {user.coins}\n"
             f"🌟 Звёзды: {user.stars}\n\n"

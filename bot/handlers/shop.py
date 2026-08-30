@@ -9,7 +9,12 @@ from bot.keyboards.shop_kb import get_shop_keyboard, get_shop_category_keyboard,
 router = Router()
 
 
-@router.callback_query(F.data.startswith("shop_"))
+def _is_shop_main_callback(data: str) -> bool:
+    parts = data.split("_")
+    return len(parts) == 2 and parts[0] == "shop" and parts[1].isdigit()
+
+
+@router.callback_query(F.data.func(_is_shop_main_callback))
 async def show_shop(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)

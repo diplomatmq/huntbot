@@ -113,7 +113,7 @@ async def travel_to_location(callback: CallbackQuery):
             text += f"   {loc.description}\n\n"
     
     try:
-        await callback.message.edit_text(text, reply_markup=get_locations_keyboard(unlocked))
+        await callback.message.edit_text(text, reply_markup=get_locations_keyboard(callback.from_user.id, unlocked))
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
