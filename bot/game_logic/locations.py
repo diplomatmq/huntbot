@@ -119,24 +119,6 @@ LOCATIONS = {
         required_progress="north_forest",
         progress_threshold=80,
         boss_unlock_threshold=70
-    ),
-    "ocean": LocationData(
-        id="ocean",
-        name="Океан",
-        emoji="🌊",
-        description="Бескрайний океан с рыбами, акулами и китами.",
-        required_progress="deep_forest",
-        progress_threshold=80,
-        boss_unlock_threshold=70
-    ),
-    "volcano": LocationData(
-        id="volcano",
-        name="Вулкан",
-        emoji="🌋",
-        description="Опасный регион с огненными и магматическими существами.",
-        required_progress="ocean",
-        progress_threshold=80,
-        boss_unlock_threshold=70
     )
 }
 
@@ -204,4 +186,4 @@ def is_boss_unlocked(location_id: str, location_progress: Dict[str, float]) -> b
 
 def get_location_order() -> List[str]:
     """Get the order in which locations should be unlocked"""
-    return ["forest", "taiga", "mountains", "steppe", "desert", "jungle", "swamp", "tundra", "savanna", "rainforest", "north_forest", "deep_forest", "ocean", "volcano"]
+    return ["forest", "taiga", "mountains", "steppe", "desert", "jungle", "swamp", "tundra", "savanna", "rainforest", "north_forest", "deep_forest"]

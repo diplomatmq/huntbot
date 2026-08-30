@@ -9,8 +9,7 @@ from bot.config import MAX_ENERGY, ENERGY_REGEN_PASSIVE
 ALL_LOCATION_KEYS = [
     "forest", "taiga", "mountains", "steppe",
     "desert", "jungle", "swamp", "tundra",
-    "savanna", "rainforest", "north_forest", "deep_forest",
-    "ocean", "volcano"
+    "savanna", "rainforest", "north_forest", "deep_forest"
 ]
 
 
@@ -308,38 +307,59 @@ async def migrate_old_ammo_names(session: AsyncSession):
                 # Rename and update quantity
                 item.item_name = base_name
                 item.quantity = item.quantity * quantity_multiplier
+        else:
+            # No parentheses found, just check if it's an old format
+            if "(10шт)" in item.item_name:
+                base_name = item.item_name.replace(" (10шт)", "").strip()
+                logger.info(f"[MIGRATION] Migrating '{item.item_name}' to '{base_name}' with quantity {item.quantity * 10}")
+
+                existing_result = await session.execute(
+                    select(Inventory).where(
+                        and_(
+                            Inventory.user_id == item.user_id,
+                            Inventory.item_name == base_name,
+                            Inventory.item_type == item.item_type
+                        )
+                    )
+                )
+                existing = existing_result.scalar_one_or_none()
+
+                if existing:
+                    existing.quantity += item.quantity * 10
+                    await session.delete(item)
+                else:
+                    item.item_name = base_name
+                    item.quantity = item.quantity * 10
 
     await session.commit()
     logger.info(f"[MIGRATION] Migrated {len(old_items)} ammo items")
 
 
-async def update_location_progress(session: AsyncSession, user: User, location: str, progress_add: float) -> User:
-    if not user.location_progress:
-        user.location_progress = {}
-    
-    current = user.location_progress.get(location, 0)
-    new_progress = min(100, current + progress_add)
-    user.location_progress[location] = new_progress
-    flag_modified(user, "location_progress")
-    
-    await session.commit()
-    await session.refresh(user)
-    return user
+async def migrate_removed_locations(session: AsyncSession):
+    """Migrate users from removed locations (ocean, volcano) to forest"""
+    import logging
+    logger = logging.getLogger(__name__)
 
+    logger.info("[MIGRATION] Starting location migration for ocean and volcano")
 
-async def add_exp(session: AsyncSession, user: User, exp: int) -> User:
-    user.exp += exp
-    
-    # Level up logic: exponential curve - harder to level up
-    exp_needed = user.level * user.level * 100
-    while user.exp >= exp_needed:
-        user.exp -= exp_needed
-        user.level += 1
-        exp_needed = user.level * user.level * 100
-    
+    # Find users with current_location as ocean or volcano
+    users_result = await session.execute(
+        select(User).where(
+            or_(
+                User.current_location == "ocean",
+                User.current_location == "volcano"
+            )
+        )
+    )
+    users = users_result.scalars().all()
+
+    for user in users:
+        old_location = user.current_location
+        user.current_location = "forest"
+        logger.info(f"[MIGRATION] Moved user {user.telegram_id} from {old_location} to forest")
+
     await session.commit()
-    await session.refresh(user)
-    return user
+    logger.info(f"[MIGRATION] Migrated {len(users)} users from removed locations")
 
 
 async def add_coins(session: AsyncSession, user: User, coins: int) -> User:

@@ -98,30 +98,39 @@ async def cmd_help(message: Message):
 
 @router.message(F.text == "/topl")
 async def cmd_top_players(message: Message):
+    from bot.database.queries import get_all_users
+    from bot.database.models import User
+
     async with async_session() as session:
-        top_players = await get_top_players_by_level(session, limit=10)
-        
-        if not top_players:
-            await message.answer("🏆 <b>Топ игроков</b>\n\nПока нет игроков в рейтинге!", reply_to_message_id=message.message_id)
-            return
-        
+        users = await get_all_users(session)
+
+        # Sort by level, then by exp
+        sorted_users = sorted(users, key=lambda u: (u.level, u.exp), reverse=True)
+        top_10 = sorted_users[:10]
+
         text = "🏆 <b>Топ 10 игроков по уровню</b>\n\n"
-        for idx, player in enumerate(top_players, 1):
-            medal = ""
+        for idx, player in enumerate(top_10, 1):
             if idx == 1:
                 medal = "🥇"
             elif idx == 2:
                 medal = "🥈"
             elif idx == 3:
                 medal = "🥉"
-            
+
             username = player.username if player.username else f"ID: {player.telegram_id}"
             exp_needed = player.level * player.level * 100
             text += f"{medal} {idx}. {username} — Уровень {player.level} ({player.exp}/{exp_needed} XP)\n"
-        
+
         await message.answer(text, reply_to_message_id=message.message_id)
 
 
+@router.message(F.text == "/migrate_locations")
+async def cmd_migrate_locations(message: Message):
+    from bot.database.queries import migrate_removed_locations
+
+    async with async_session() as session:
+        await migrate_removed_locations(session)
+        await message.answer("✅ Миграция локаций завершена. Пользователи из океана и вулкана перемещены в лес.", reply_to_message_id=message.message_id)
 
 
 @router.callback_query(F.data.startswith("toggle_mode_"))

@@ -164,9 +164,7 @@ async def show_animals(callback: CallbackQuery):
             "savanna": "🦁 Саванна",
             "rainforest": "🌧️ Тропический лес",
             "north_forest": "🌲 Северный лес",
-            "deep_forest": "🌲 Глубокий лес",
-            "ocean": "🌊 Океан",
-            "volcano": "🌋 Вулкан"
+            "deep_forest": "🌲 Глубокий лес"
         }
         
         text = f"🦌 <b>Животные</b>\n\n"
