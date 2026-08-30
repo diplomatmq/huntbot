@@ -122,6 +122,30 @@ async def cmd_top_players(message: Message):
         await message.answer(text, reply_to_message_id=message.message_id)
 
 
+@router.message(F.text == "/migrate_animals")
+async def cmd_migrate_animals(message: Message):
+    from bot.database.queries import migrate_animal_species
+    
+    async with async_session() as session:
+        # Reset migration flag for current user
+        from bot.database.models import User
+        from sqlalchemy import update
+        
+        user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+        
+        # Reset flag
+        user.animal_species_migration_done = False
+        await session.commit()
+        
+        # Run migration
+        migration_performed = await migrate_animal_species(session)
+        
+        if migration_performed:
+            await message.answer("✅ Миграция животных выполнена успешно!", reply_to_message_id=message.message_id)
+        else:
+            await message.answer("ℹ️ Миграция уже была выполнена ранее.", reply_to_message_id=message.message_id)
+
+
 @router.callback_query(F.data.startswith("toggle_mode_"))
 @retry(retry_count=3)
 async def toggle_mode(callback: CallbackQuery):

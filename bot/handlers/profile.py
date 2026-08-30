@@ -147,6 +147,10 @@ async def show_animals(callback: CallbackQuery):
         total_kinds = species_data["kinds"]
         total_killed = species_data["killed"]
         
+        # Get total animal count in game
+        from bot.game_logic.animals import get_total_animal_count
+        total_animals_in_game = get_total_animal_count()
+        
         # Location names in Russian
         location_names = {
             "forest": "🌲 Лес",
@@ -166,7 +170,7 @@ async def show_animals(callback: CallbackQuery):
         }
         
         text = f"🦌 <b>Животные</b>\n\n"
-        text += f"Всего видов животных убито: <b>{total_kinds}</b> из возможных\n"
+        text += f"Всего видов животных убито: <b>{total_kinds}/{total_animals_in_game}</b>\n"
         text += f"Всего убито животных: <b>{total_killed}</b>\n\n"
         
         if by_location:

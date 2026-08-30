@@ -386,20 +386,30 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
     """Migrate existing animal kill data to AnimalSpecies table. Returns True if migration was performed."""
     from bot.database.models import AnimalSpecies
     from bot.game_logic.animals import get_animal_location
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     # Check if migration already done
     result = await session.execute(select(User).where(User.animal_species_migration_done == True))
     already_migrated = result.scalar_one_or_none()
     
     if already_migrated:
+        logger.info("AnimalSpecies migration already done, skipping.")
         return False
+    
+    logger.info("Starting AnimalSpecies migration...")
     
     # Get all users
     result = await session.execute(select(User))
     users = result.scalars().all()
     
     migrated_count = 0
+    total_records = 0
+    
     for user in users:
+        user_migrated = False
+        
         # Process free mode kills
         if user.animals_killed_free:
             for animal_name, count in user.animals_killed_free.items():
@@ -427,6 +437,10 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                             total_killed=count
                         )
                         session.add(new_record)
+                        total_records += 1
+                    user_migrated = True
+                else:
+                    logger.warning(f"Could not find location for animal: {animal_name}")
         
         # Process story mode kills
         if user.animals_killed_story:
@@ -455,10 +469,19 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                             total_killed=count
                         )
                         session.add(new_record)
+                        total_records += 1
+                    user_migrated = True
+                else:
+                    logger.warning(f"Could not find location for animal: {animal_name}")
         
-        # Mark user as migrated
-        user.animal_species_migration_done = True
-        migrated_count += 1
+        # Mark user as migrated only if they had data
+        if user_migrated:
+            user.animal_species_migration_done = True
+            migrated_count += 1
+        else:
+            # Mark as migrated even if no data to avoid re-checking
+            user.animal_species_migration_done = True
     
     await session.commit()
+    logger.info(f"AnimalSpecies migration completed. Migrated {migrated_count} users, created {total_records} records.")
     return True

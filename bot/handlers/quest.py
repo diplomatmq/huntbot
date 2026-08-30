@@ -365,6 +365,7 @@ async def quest_detail(callback: CallbackQuery):
                 section=section,
                 return_page=return_page,
                 can_take=can_take,
+                is_repeatable=getattr(quest, "is_repeatable", False),
             ),
         )
     except (TelegramBadRequest, TelegramRetryAfter) as e:
@@ -395,6 +396,13 @@ async def take_quest(callback: CallbackQuery):
             await callback.answer("❌ Квесты доступны только в сюжетном режиме!", show_alert=True)
             return
 
+        res = await session.execute(select(Quest).where(Quest.id == quest_id))
+        quest = res.scalar_one_or_none()
+        if not quest:
+            await callback.answer("❌ Квест не найден!", show_alert=True)
+            return
+
+        # Check if there's already an active quest
         result = await session.execute(
             select(UserQuest).where(
                 UserQuest.user_id == user.id,
@@ -407,11 +415,25 @@ async def take_quest(callback: CallbackQuery):
             await _render_overview(callback)
             return
 
-        res = await session.execute(select(Quest).where(Quest.id == quest_id))
-        quest = res.scalar_one_or_none()
-        if not quest:
-            await callback.answer("❌ Квест не найден!", show_alert=True)
-            return
+        # For repeatable quests, check if there's a completed one and reset it
+        if getattr(quest, "is_repeatable", False):
+            completed_result = await session.execute(
+                select(UserQuest).where(
+                    UserQuest.user_id == user.id,
+                    UserQuest.quest_id == quest_id,
+                    UserQuest.status == "completed",
+                )
+            )
+            completed_uq = completed_result.scalar_one_or_none()
+            if completed_uq:
+                # Reset the completed quest to active
+                completed_uq.status = "active"
+                completed_uq.progress = {}
+                await session.commit()
+                await callback.answer(f"🔄 Квест «{quest.title}» взят снова!")
+                callback.data = f"questlist_active_1_{callback.from_user.id}"
+                await show_quest_list(callback)
+                return
 
         user_quest = UserQuest(user_id=user.id, quest_id=quest_id, status="active", progress={})
         session.add(user_quest)
