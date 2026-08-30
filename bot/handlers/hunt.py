@@ -267,8 +267,12 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         user = await add_exp(session, user, exp)
         user = await add_coins(session, user, coins)
         
-        # Add drops to inventory
+        # Add drops to inventory (excluding quest items)
+        quest_items = {"шкура", "когти", "рога", "клыки", "перья", "раковина", "яд", "бивни"}
         for item_name, quantity in drops.items():
+            # Skip quest items - they don't go to inventory
+            if item_name.lower() in quest_items:
+                continue
             item_type = "meat" if item_name.lower() == "мясо" else "material"
             await add_inventory_item(session, user.id, item_name, item_type, quantity, animal.rarity)
 

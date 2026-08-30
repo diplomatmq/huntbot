@@ -122,32 +122,6 @@ async def cmd_top_players(message: Message):
         await message.answer(text, reply_to_message_id=message.message_id)
 
 
-@router.message(F.text == "/migrate_animals")
-async def cmd_migrate_animals(message: Message):
-    from bot.database.queries import migrate_animal_species
-    from bot.database.models import User
-    from sqlalchemy import update
-    
-    async with async_session() as session:
-        await session.execute(update(User).values(animal_species_migration_done=False))
-        await session.commit()
-        
-        # Run migration
-        migration_performed = await migrate_animal_species(session)
-        
-        if migration_performed:
-            await message.answer("✅ Миграция животных выполнена успешно!", reply_to_message_id=message.message_id)
-        else:
-            await message.answer("ℹ️ Миграция животных уже была выполнена.", reply_to_message_id=message.message_id)
-
-
-@router.message(F.text == "/migrate_ammo")
-async def cmd_migrate_ammo(message: Message):
-    from bot.database.queries import migrate_old_ammo_names
-
-    async with async_session() as session:
-        await migrate_old_ammo_names(session)
-        await message.answer("✅ Миграция боеприпасов выполнена успешно!", reply_to_message_id=message.message_id)
 
 
 @router.callback_query(F.data.startswith("toggle_mode_"))
