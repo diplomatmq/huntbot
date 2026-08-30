@@ -8,7 +8,8 @@ from aiogram.types import Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot.config import BOT_TOKEN
 from bot.dispatcher import get_dispatcher
-from bot.database.db import init_db
+from bot.database.db import init_db, async_session
+from bot.database.queries import migrate_animal_species
 
 # Configure logging to suppress unhandled update logs
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,12 @@ async def main():
 
     # Initialize database
     await init_db()
+
+    # Run migration for AnimalSpecies table (one-time)
+    async with async_session() as session:
+        migration_performed = await migrate_animal_species(session)
+        if migration_performed:
+            logging.info("AnimalSpecies migration completed successfully.")
 
     # Get dispatcher with all routers
     dp = await get_dispatcher()

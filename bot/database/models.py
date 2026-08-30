@@ -52,16 +52,21 @@ class User(Base):
     total_hunts_story = Column(Integer, default=0)
     successful_hunts_story = Column(Integer, default=0)
     animals_killed_story = Column(JSON, default={})  # {"rabbit": 5, "deer": 2, ...}
-    
+
+    # Migrations / flags
+    species_migrated = Column(Boolean, default=False)
+    animal_species_migration_done = Column(Boolean, default=False)
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
     # Relationships
     inventory_items = relationship("Inventory", back_populates="user", cascade="all, delete-orphan")
     weapons = relationship("Weapon", back_populates="user", cascade="all, delete-orphan")
     user_quests = relationship("UserQuest", back_populates="user", cascade="all, delete-orphan")
     trophies = relationship("Trophy", back_populates="user", cascade="all, delete-orphan")
     auction_lots = relationship("AuctionLot", back_populates="seller", cascade="all, delete-orphan")
+    animal_species = relationship("AnimalSpecies", back_populates="user", cascade="all, delete-orphan")
 
 
 class Inventory(Base):
@@ -222,3 +227,16 @@ class StarsTransaction(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     user = relationship("User")
+
+
+class AnimalSpecies(Base):
+    __tablename__ = "animal_species"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    animal_name = Column(String, nullable=False)
+    location = Column(String, nullable=False)
+    total_killed = Column(Integer, default=0)
+
+    user = relationship("User", back_populates="animal_species")

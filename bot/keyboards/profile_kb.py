@@ -5,13 +5,14 @@ def get_profile_keyboard(user_id: int):
     buttons = [
         [
             InlineKeyboardButton(text="🎯 Навыки", callback_data=f"skills_{user_id}"),
-            InlineKeyboardButton(text="📍 Локации", callback_data=f"locations_{user_id}")
+            InlineKeyboardButton(text="🦌 Животные", callback_data=f"animals_{user_id}")
         ],
         [
-            InlineKeyboardButton(text="🎒 Инвентарь", callback_data=f"inventory_{user_id}"),
-            InlineKeyboardButton(text="📜 Квесты", callback_data=f"quests_{user_id}")
+            InlineKeyboardButton(text="📍 Локации", callback_data=f"locations_{user_id}"),
+            InlineKeyboardButton(text="🎒 Инвентарь", callback_data=f"inventory_{user_id}")
         ],
         [
+            InlineKeyboardButton(text="📜 Квесты", callback_data=f"quests_{user_id}"),
             InlineKeyboardButton(text="🏠 Меню", callback_data=f"menu_{user_id}")
         ]
     ]

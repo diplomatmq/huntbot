@@ -1,8 +1,17 @@
 from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from bot.database.models import User, Inventory, Weapon, Quest, UserQuest, Animal, Trophy, AuctionLot, StarsTransaction
 from datetime import datetime, timedelta
 from bot.config import MAX_ENERGY, ENERGY_REGEN_PASSIVE
+
+
+ALL_LOCATION_KEYS = [
+    "forest", "taiga", "mountains", "steppe",
+    "desert", "jungle", "swamp", "tundra",
+    "savanna", "rainforest", "north_forest", "deep_forest",
+    "ocean", "volcano"
+]
 
 
 async def get_or_create_user(session: AsyncSession, telegram_id: int, username: str = None) -> User:
@@ -10,15 +19,12 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
     user = result.scalar_one_or_none()
     
     if not user:
+        default_progress = {k: 0 for k in ALL_LOCATION_KEYS}
         user = User(
             telegram_id=telegram_id,
             username=username,
             game_mode="free",
-            location_progress={
-                "forest": 0, "taiga": 0, "mountains": 0, "steppe": 0, 
-                "desert": 0, "jungle": 0, "swamp": 0, "tundra": 0, 
-                "savanna": 0, "ocean": 0, "deep_forest": 0, "volcano": 0
-            }
+            location_progress=default_progress
         )
         session.add(user)
         try:
@@ -34,8 +40,43 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
                 raise
     else:
         # Update username if it changed
+        changed = False
         if username and user.username != username:
             user.username = username
+            changed = True
+        
+        # Ensure location_progress has all keys (for users created before new locations were added)
+        if not user.location_progress:
+            user.location_progress = {}
+        progress = user.location_progress
+        added = False
+        for k in ALL_LOCATION_KEYS:
+            if k not in progress:
+                progress[k] = 0
+                added = True
+        if added:
+            flag_modified(user, "location_progress")
+            changed = True
+
+        # Ensure statistics JSON dicts are initialized
+        if user.animals_killed_free is None:
+            user.animals_killed_free = {}
+            flag_modified(user, "animals_killed_free")
+            changed = True
+        if user.animals_killed_story is None:
+            user.animals_killed_story = {}
+            flag_modified(user, "animals_killed_story")
+            changed = True
+        if user.active_buffs is None:
+            user.active_buffs = {}
+            flag_modified(user, "active_buffs")
+            changed = True
+        if user.skills is None:
+            user.skills = {"accuracy": 0, "stealth": 0, "endurance": 0}
+            flag_modified(user, "skills")
+            changed = True
+
+        if changed:
             await session.commit()
             await session.refresh(user)
     
@@ -205,6 +246,7 @@ async def update_location_progress(session: AsyncSession, user: User, location: 
     current = user.location_progress.get(location, 0)
     new_progress = min(100, current + progress_add)
     user.location_progress[location] = new_progress
+    flag_modified(user, "location_progress")
     
     await session.commit()
     await session.refresh(user)
@@ -245,6 +287,47 @@ async def get_equipped_weapon(session: AsyncSession, user_id: int) -> Weapon:
     return result.scalar_one_or_none()
 
 
+async def add_species_kill(session: AsyncSession, user_id: int, animal_name: str, location: str, add_count: int = 1):
+    from bot.database.models import AnimalSpecies
+    result = await session.execute(
+        select(AnimalSpecies).where(
+            and_(
+                AnimalSpecies.user_id == user_id,
+                AnimalSpecies.animal_name == animal_name,
+                AnimalSpecies.location == location,
+            )
+        )
+    )
+    sp = result.scalar_one_or_none()
+    if sp:
+        sp.total_killed += add_count
+    else:
+        sp = AnimalSpecies(
+            user_id=user_id,
+            animal_name=animal_name,
+            location=location,
+            total_killed=add_count,
+        )
+        session.add(sp)
+    await session.commit()
+
+
+async def get_species_for_user(session: AsyncSession, user_id: int) -> dict:
+    from bot.database.models import AnimalSpecies
+    result = await session.execute(
+        select(AnimalSpecies).where(AnimalSpecies.user_id == user_id)
+    )
+    species = result.scalars().all()
+    by_loc: dict[str, list[tuple[str, int]]] = {}
+    total_kinds = 0
+    total_killed = 0
+    for s in species:
+        by_loc.setdefault(s.location, []).append((s.animal_name, s.total_killed))
+        total_kinds += 1
+        total_killed += s.total_killed
+    return {"by_location": by_loc, "kinds": total_kinds, "killed": total_killed}
+
+
 async def get_active_quests(session: AsyncSession, user_id: int) -> list[UserQuest]:
     result = await session.execute(
         select(UserQuest).where(
@@ -254,21 +337,128 @@ async def get_active_quests(session: AsyncSession, user_id: int) -> list[UserQue
     return result.scalars().all()
 
 
-async def get_available_quests(session: AsyncSession, user_level: int, location: str, user_id: int) -> list[Quest]:
-    # Get quest IDs that user already has (active or completed)
+async def get_available_quests(session: AsyncSession, user_level: int, user_id: int,
+                                location_ids: list[str] | None = None, allow_repeatable=True) -> list[Quest]:
     user_quests_result = await session.execute(
-        select(UserQuest.quest_id).where(UserQuest.user_id == user_id)
+        select(UserQuest.quest_id, UserQuest.status).where(UserQuest.user_id == user_id)
     )
-    taken_quest_ids = set(q[0] for q in user_quests_result.all())
-    
-    # Get available quests excluding already taken ones
+    user_rows = user_quests_result.all()
+    active_quest_ids = {r[0] for r in user_rows if r[1] == "active"}
+    completed_non_repeatable = set()
+    completed_repeatable_last_done = {}
+    from bot.database.models import UserQuest as _UQ
+    res = await session.execute(
+        select(_UQ).where(_UQ.user_id == user_id, _UQ.status == "completed")
+    )
+    for uq in res.scalars().all():
+        if uq.quest_id in active_quest_ids:
+            continue
+        q_stmt = await session.execute(select(Quest).where(Quest.id == uq.quest_id))
+        q = q_stmt.scalar_one_or_none()
+        if not q:
+            continue
+        if q.is_repeatable and allow_repeatable:
+            prev = completed_repeatable_last_done.get(q.id)
+            if prev is None or (uq.completed_at and uq.completed_at > prev):
+                completed_repeatable_last_done[q.id] = uq.completed_at or datetime.min
+        else:
+            completed_non_repeatable.add(q.id)
+
+    taken_blocked = completed_non_repeatable | active_quest_ids
+
+    clauses = [Quest.required_level <= user_level]
+    if location_ids:
+        clauses.append(Quest.location.in_(location_ids))
+
+    result = await session.execute(select(Quest).where(and_(*clauses)).order_by(Quest.location, Quest.quest_type, Quest.required_level))
+    quests = result.scalars().all()
+    return [q for q in quests if q.id not in taken_blocked]
+
+
+async def get_top_players_by_level(session: AsyncSession, limit: int = 10) -> list[User]:
     result = await session.execute(
-        select(Quest).where(
-            and_(
-                Quest.required_level <= user_level,
-                Quest.location == location,
-                ~Quest.id.in_(taken_quest_ids) if taken_quest_ids else True
-            )
-        )
+        select(User).order_by(User.level.desc(), User.exp.desc()).limit(limit)
     )
     return result.scalars().all()
+
+
+async def migrate_animal_species(session: AsyncSession) -> bool:
+    """Migrate existing animal kill data to AnimalSpecies table. Returns True if migration was performed."""
+    from bot.database.models import AnimalSpecies
+    from bot.game_logic.animals import get_animal_location
+    
+    # Check if migration already done
+    result = await session.execute(select(User).where(User.animal_species_migration_done == True))
+    already_migrated = result.scalar_one_or_none()
+    
+    if already_migrated:
+        return False
+    
+    # Get all users
+    result = await session.execute(select(User))
+    users = result.scalars().all()
+    
+    migrated_count = 0
+    for user in users:
+        # Process free mode kills
+        if user.animals_killed_free:
+            for animal_name, count in user.animals_killed_free.items():
+                location = get_animal_location(animal_name)
+                if location:
+                    # Check if already exists
+                    existing = await session.execute(
+                        select(AnimalSpecies).where(
+                            and_(
+                                AnimalSpecies.user_id == user.id,
+                                AnimalSpecies.animal_name == animal_name,
+                                AnimalSpecies.location == location
+                            )
+                        )
+                    )
+                    existing_record = existing.scalar_one_or_none()
+                    
+                    if existing_record:
+                        existing_record.total_killed += count
+                    else:
+                        new_record = AnimalSpecies(
+                            user_id=user.id,
+                            animal_name=animal_name,
+                            location=location,
+                            total_killed=count
+                        )
+                        session.add(new_record)
+        
+        # Process story mode kills
+        if user.animals_killed_story:
+            for animal_name, count in user.animals_killed_story.items():
+                location = get_animal_location(animal_name)
+                if location:
+                    # Check if already exists
+                    existing = await session.execute(
+                        select(AnimalSpecies).where(
+                            and_(
+                                AnimalSpecies.user_id == user.id,
+                                AnimalSpecies.animal_name == animal_name,
+                                AnimalSpecies.location == location
+                            )
+                        )
+                    )
+                    existing_record = existing.scalar_one_or_none()
+                    
+                    if existing_record:
+                        existing_record.total_killed += count
+                    else:
+                        new_record = AnimalSpecies(
+                            user_id=user.id,
+                            animal_name=animal_name,
+                            location=location,
+                            total_killed=count
+                        )
+                        session.add(new_record)
+        
+        # Mark user as migrated
+        user.animal_species_migration_done = True
+        migrated_count += 1
+    
+    await session.commit()
+    return True

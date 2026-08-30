@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 import random
 
 
@@ -15,6 +15,76 @@ class AnimalData:
     drop_chance: float
     drops: Dict[str, Dict[str, int]]
     sticker_file: str
+
+
+DROP_NAMES_RU: Dict[str, str] = {
+    "meat": "Мясо",
+    "skin": "Шкура",
+    "fangs": "Клыки",
+    "claws": "Когти",
+    "horns": "Рога",
+    "tusks": "Бивни",
+    "hide": "Кожа",
+    "teeth": "Зубы",
+    "feathers": "Перья",
+    "scales": "Чешуйки",
+    "fin": "Плавник",
+    "stinger": "Жало",
+    "shell": "Панцирь",
+    "silk": "Паутина",
+    "venom": "Яд",
+    "tentacles": "Щупальца",
+    "croc_teeth": "Крокодильи зубы",
+    "whale_tooth": "Зуб кашалота",
+    "wool": "Шерсть",
+    "bone": "Кость",
+    "antlers": "Рога оленя",
+    "bile": "Желчь",
+    "quills": "Иглы",
+    "hooves": "Копыта",
+    "mane": "Грива",
+    "horn": "Рог носорога",
+    "talons": "Когти ястреба",
+    "ambergris": "Амбра",
+    "barnacles": "Балянусы",
+    "ink": "Чернила",
+    "pearls": "Жемчуг",
+    "obsidian": "Обсидиан",
+    "magma_core": "Ядро магмы",
+    "fire_essence": "Огненная эссенция",
+    "ash_heart": "Пепельное сердце",
+    "charcoal": "Уголь",
+    "sulfur": "Сера",
+}
+
+
+def drop_to_ru(drop_key: str) -> str:
+    return DROP_NAMES_RU.get(drop_key, drop_key.replace("_", " ").capitalize())
+
+
+def ru_to_drop(ru_name: str) -> str:
+    t = ru_name.strip().lower().replace("ё", "е")
+    for k, v in DROP_NAMES_RU.items():
+        if v.lower().replace("ё", "е") == t:
+            return k
+    return ru_name.strip()
+
+
+_ANIMAL_LOCATION: Dict[str, str] = {}
+
+
+def build_animal_location_index() -> Dict[str, str]:
+    if _ANIMAL_LOCATION:
+        return _ANIMAL_LOCATION
+    for loc_key, animals in ANIMALS_BY_LOCATION.items():
+        for a in animals:
+            _ANIMAL_LOCATION[a.name.strip().lower()] = loc_key
+    return _ANIMAL_LOCATION
+
+
+def get_animal_location(animal_name: str) -> Optional[str]:
+    idx = build_animal_location_index()
+    return idx.get(animal_name.strip().lower())
 
 
 # Rarity multipliers
@@ -368,6 +438,53 @@ ANIMALS_BY_LOCATION = {
         AnimalData("Великий лось", "🦌", "legendary", 450, 320, 500.0, 700.0, 0.008, {"meat": {"min": 40, "max": 50}, "skin": {"min": 1, "max": 1}, "horns": {"min": 1, "max": 1}}, "stickers/deep_forest/veliky_los.webp"),
         AnimalData("Дух глухого леса", "🐻", "legendary", 520, 390, 300.0, 450.0, 0.005, {"meat": {"min": 40, "max": 60}, "skin": {"min": 1, "max": 1}, "claws": {"min": 6, "max": 9}}, "stickers/deep_forest/spirit.webp"),
     ],
+    "ocean": [
+        AnimalData("Морской окунь", "🐟", "common", 6, 4, 0.5, 2.0, 0.12, {"meat": {"min": 1, "max": 2}}, "stickers/ocean/sea_bass.webp"),
+        AnimalData("Сельдь", "🐟", "common", 5, 3, 0.3, 1.0, 0.10, {"meat": {"min": 1, "max": 2}}, "stickers/ocean/herring.webp"),
+        AnimalData("Краб", "🦀", "common", 8, 5, 0.2, 0.8, 0.09, {"meat": {"min": 1, "max": 1}, "shell": {"min": 1, "max": 1}}, "stickers/ocean/crab.webp"),
+        AnimalData("Креветка", "🦐", "common", 4, 2, 0.01, 0.05, 0.08, {"meat": {"min": 1, "max": 2}}, "stickers/ocean/shrimp.webp"),
+        AnimalData("Медуза", "🪼", "common", 3, 2, 0.5, 3.0, 0.07, {"venom": {"min": 1, "max": 2}}, "stickers/ocean/jellyfish.webp"),
+        AnimalData("Звезда", "⭐", "common", 4, 2, 0.1, 0.5, 0.06, {"shell": {"min": 1, "max": 1}}, "stickers/ocean/starfish.webp"),
+        AnimalData("Морской конёк", "🐴", "common", 5, 3, 0.005, 0.02, 0.05, {"meat": {"min": 1, "max": 1}}, "stickers/ocean/seahorse.webp"),
+        AnimalData("Тюлень", "🦭", "uncommon", 25, 17, 40.0, 80.0, 0.09, {"meat": {"min": 4, "max": 8}, "skin": {"min": 1, "max": 1}}, "stickers/ocean/seal.webp"),
+        AnimalData("Морская черепаха", "🐢", "uncommon", 32, 22, 80.0, 200.0, 0.08, {"meat": {"min": 5, "max": 10}, "shell": {"min": 1, "max": 1}}, "stickers/ocean/turtle.webp"),
+        AnimalData("Дельфин", "🐬", "uncommon", 38, 26, 100.0, 300.0, 0.07, {"meat": {"min": 6, "max": 12}}, "stickers/ocean/dolphin.webp"),
+        AnimalData("Морской котик", "🦭", "uncommon", 42, 29, 50.0, 120.0, 0.06, {"meat": {"min": 5, "max": 10}, "skin": {"min": 1, "max": 1}}, "stickers/ocean/fur_seal.webp"),
+        AnimalData("Скат", "🦈", "uncommon", 35, 24, 20.0, 80.0, 0.06, {"meat": {"min": 4, "max": 9}}, "stickers/ocean/stingray.webp"),
+        AnimalData("Осьминог", "🐙", "uncommon", 28, 19, 2.0, 10.0, 0.05, {"meat": {"min": 3, "max": 6}, "tentacles": {"min": 4, "max": 8}}, "stickers/ocean/octopus.webp"),
+        AnimalData("Акула", "🦈", "rare", 75, 52, 150.0, 500.0, 0.07, {"meat": {"min": 12, "max": 25}, "skin": {"min": 1, "max": 1}, "fin": {"min": 1, "max": 2}}, "stickers/ocean/shark.webp"),
+        AnimalData("Кит", "🐋", "rare", 95, 68, 5000.0, 12000.0, 0.05, {"meat": {"min": 80, "max": 150}, "skin": {"min": 1, "max": 1}}, "stickers/ocean/whale.webp"),
+        AnimalData("Касатка", "🐋", "rare", 88, 62, 1500.0, 4000.0, 0.05, {"meat": {"min": 30, "max": 60}, "skin": {"min": 1, "max": 1}}, "stickers/ocean/orca.webp"),
+        AnimalData("Кальмар гигантский", "🦑", "rare", 65, 45, 50.0, 200.0, 0.04, {"meat": {"min": 10, "max": 20}, "tentacles": {"min": 6, "max": 10}}, "stickers/ocean/squid.webp"),
+        AnimalData("Гигантская акула", "🦈", "epic", 140, 100, 1000.0, 3000.0, 0.035, {"meat": {"min": 50, "max": 90}, "skin": {"min": 1, "max": 1}, "fin": {"min": 2, "max": 3}}, "stickers/ocean/giant_shark.webp"),
+        AnimalData("Кашалот", "🐋", "epic", 155, 112, 8000.0, 18000.0, 0.025, {"meat": {"min": 120, "max": 220}, "skin": {"min": 1, "max": 1}, "teeth": {"min": 10, "max": 20}}, "stickers/ocean/sperm_whale.webp"),
+        AnimalData("Морж", "🦭", "epic", 120, 88, 600.0, 1500.0, 0.03, {"meat": {"min": 40, "max": 70}, "skin": {"min": 1, "max": 1}, "tusks": {"min": 2, "max": 2}}, "stickers/ocean/walrus.webp"),
+        AnimalData("Мегалодон", "🦈", "legendary", 550, 420, 5000.0, 10000.0, 0.008, {"meat": {"min": 200, "max": 350}, "skin": {"min": 1, "max": 1}, "teeth": {"min": 30, "max": 50}}, "stickers/ocean/megalodon.webp"),
+        AnimalData("Кракен", "🦑", "legendary", 620, 480, 300.0, 1000.0, 0.005, {"meat": {"min": 100, "max": 180}, "tentacles": {"min": 20, "max": 30}}, "stickers/ocean/kraken.webp"),
+    ],
+    "volcano": [
+        AnimalData("Магматический ящер", "🦎", "common", 8, 5, 1.0, 3.0, 0.12, {"meat": {"min": 1, "max": 2}, "scales": {"min": 1, "max": 2}}, "stickers/volcano/lava_lizard.webp"),
+        AnimalData("Пепельный паук", "🕷️", "common", 6, 4, 0.05, 0.2, 0.10, {"venom": {"min": 1, "max": 2}, "silk": {"min": 1, "max": 2}}, "stickers/volcano/ash_spider.webp"),
+        AnimalData("Огненная ящерица", "🦎", "common", 10, 6, 0.8, 2.5, 0.09, {"meat": {"min": 1, "max": 2}, "scales": {"min": 1, "max": 2}}, "stickers/volcano/fire_lizard.webp"),
+        AnimalData("Пепельная ящерица", "🦎", "common", 9, 5, 0.5, 2.0, 0.08, {"meat": {"min": 1, "max": 2}, "scales": {"min": 1, "max": 2}}, "stickers/volcano/ash_lizard.webp"),
+        AnimalData("Лавовый жук", "🪲", "common", 5, 3, 0.01, 0.05, 0.07, {"shell": {"min": 1, "max": 1}}, "stickers/volcano/lava_beetle.webp"),
+        AnimalData("Угольная летучая мышь", "🦇", "common", 7, 4, 0.05, 0.15, 0.06, {"meat": {"min": 1, "max": 1}}, "stickers/volcano/coal_bat.webp"),
+        AnimalData("Серный змей", "🐍", "common", 8, 5, 0.3, 1.2, 0.06, {"venom": {"min": 1, "max": 2}, "skin": {"min": 1, "max": 1}}, "stickers/volcano/sulfur_snake.webp"),
+        AnimalData("Магматический варан", "🦎", "uncommon", 35, 24, 20.0, 60.0, 0.09, {"meat": {"min": 6, "max": 12}, "scales": {"min": 3, "max": 6}}, "stickers/volcano/lava_varan.webp"),
+        AnimalData("Огненная змея", "🐍", "uncommon", 42, 29, 5.0, 20.0, 0.08, {"meat": {"min": 4, "max": 10}, "venom": {"min": 3, "max": 6}, "skin": {"min": 1, "max": 1}}, "stickers/volcano/fire_snake.webp"),
+        AnimalData("Пламенный скорпион", "🦂", "uncommon", 38, 26, 0.5, 2.0, 0.07, {"venom": {"min": 3, "max": 6}, "shell": {"min": 1, "max": 1}}, "stickers/volcano/flame_scorpion.webp"),
+        AnimalData("Обсидиановый паук", "🕷️", "uncommon", 32, 22, 0.3, 1.0, 0.06, {"venom": {"min": 2, "max": 5}, "silk": {"min": 2, "max": 5}}, "stickers/volcano/obsidian_spider.webp"),
+        AnimalData("Лавовый червь", "🐛", "uncommon", 45, 31, 5.0, 25.0, 0.05, {"meat": {"min": 5, "max": 15}}, "stickers/volcano/lava_worm.webp"),
+        AnimalData("Огненная саламандра", "🦎", "rare", 72, 50, 8.0, 30.0, 0.07, {"meat": {"min": 6, "max": 14}, "scales": {"min": 5, "max": 10}}, "stickers/volcano/fire_salamander.webp"),
+        AnimalData("Магматический дракон", "🐉", "rare", 130, 95, 500.0, 1500.0, 0.05, {"meat": {"min": 40, "max": 80}, "scales": {"min": 15, "max": 25}, "horns": {"min": 2, "max": 2}}, "stickers/volcano/lava_dragon.webp"),
+        AnimalData("Феникс", "🔥", "rare", 155, 115, 30.0, 80.0, 0.04, {"meat": {"min": 10, "max": 20}, "feathers": {"min": 15, "max": 25}}, "stickers/volcano/phoenix.webp"),
+        AnimalData("Обсидиановый голем", "🗿", "rare", 100, 72, 300.0, 800.0, 0.03, {"shell": {"min": 10, "max": 20}}, "stickers/volcano/obsidian_golem.webp"),
+        AnimalData("Огненный феникс", "🔥", "epic", 180, 135, 50.0, 120.0, 0.035, {"meat": {"min": 20, "max": 35}, "feathers": {"min": 30, "max": 50}}, "stickers/volcano/fire_phoenix.webp"),
+        AnimalData("Огненный дракон", "🐉", "epic", 220, 170, 1000.0, 3000.0, 0.025, {"meat": {"min": 80, "max": 150}, "scales": {"min": 30, "max": 50}, "horns": {"min": 2, "max": 2}}, "stickers/volcano/fire_dragon.webp"),
+        AnimalData("Лавовый титан", "🗿", "epic", 200, 150, 2000.0, 5000.0, 0.02, {"shell": {"min": 30, "max": 60}}, "stickers/volcano/lava_titan.webp"),
+        AnimalData("Вулканический дух", "🐉", "legendary", 700, 540, 1500.0, 4000.0, 0.008, {"meat": {"min": 100, "max": 180}, "scales": {"min": 50, "max": 80}, "horns": {"min": 4, "max": 4}}, "stickers/volcano/volcano_spirit.webp"),
+        AnimalData("Повелитель огня", "🔥", "legendary", 800, 620, 800.0, 2000.0, 0.005, {"meat": {"min": 60, "max": 120}, "feathers": {"min": 80, "max": 120}}, "stickers/volcano/lord_of_fire.webp"),
+    ],
 }
 
 
@@ -423,12 +540,13 @@ def calculate_rewards(animal: AnimalData, weight: float) -> tuple[int, int]:
 def generate_drops(animal: AnimalData) -> Dict[str, int]:
     """Generate random drops based on animal's drop table"""
     drops = {}
-    
+
     for item_name, range_data in animal.drops.items():
         quantity = random.randint(range_data["min"], range_data["max"])
         if quantity > 0:
-            drops[item_name] = quantity
-    
+            ru_name = drop_to_ru(item_name)
+            drops[ru_name] = drops.get(ru_name, 0) + quantity
+
     return drops
 
 

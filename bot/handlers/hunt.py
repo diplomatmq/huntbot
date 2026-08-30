@@ -5,15 +5,20 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, PreCheckoutQuery, SuccessfulPayment
 from sqlalchemy import select, and_
+from sqlalchemy.orm.attributes import flag_modified
 from bot.database.db import async_session
 from bot.database.models import StarsTransaction, Inventory
 from bot.database.queries import (
     get_or_create_user, update_energy, consume_energy, can_hunt,
     update_hunt_cooldown, add_inventory_item, update_location_progress,
     add_exp, add_coins, add_energy, get_equipped_weapon, get_active_quests,
-    create_stars_transaction, update_stars_transaction, consume_inventory_item
+    create_stars_transaction, update_stars_transaction, consume_inventory_item,
+    add_species_kill,
 )
-from bot.game_logic.animals import select_random_animal, calculate_rewards, generate_drops, can_kill_animal
+from bot.game_logic.animals import (
+    select_random_animal, calculate_rewards, generate_drops, can_kill_animal,
+    drop_to_ru, ru_to_drop,
+)
 from bot.game_logic.hunt_calculator import calculate_hit_chance
 from bot.game_logic.locations import get_location
 from bot.keyboards.hunt_kb import (
@@ -45,38 +50,53 @@ def _animal_name_matches(hunted_name: str, target_name: str) -> bool:
 
 
 ITEM_ALIASES = {
-    "шкура": "skin", "шкуры": "skin", "шкур": "skin", "скин": "skin",
-    "клык": "fangs", "клыки": "fangs", "клыка": "fangs",
-    "коготь": "claws", "когти": "claws", "когтя": "claws",
-    "рог": "horns", "рога": "horns",
-    "бивень": "tusks", "бивни": "tusks", "клык_кабана": "tusks", "бивня": "tusks",
-    "кожа": "hide", "шкура_толстая": "hide",
-    "зуб": "teeth", "зубы": "teeth",
-    "перо": "feathers", "перья": "feathers",
-    "мясо": "meat", "мяса": "meat",
-    "зуб_крокодила": "croc_teeth", "зуб_кашалота": "whale_tooth",
-    "чешуйка": "scales", "чешуйки": "scales",
-    "плавник": "fin", "плавники": "fin",
-    "жало": "stinger", "жала": "stinger",
+    "шкура": "Шкура", "шкуры": "Шкура", "шкур": "Шкура", "скин": "Шкура", "skin": "Шкура",
+    "клык": "Клыки", "клыки": "Клыки", "клыка": "Клыки", "fangs": "Клыки",
+    "коготь": "Когти", "когти": "Когти", "когтя": "Когти", "claws": "Когти",
+    "рог": "Рога", "рога": "Рога", "horns": "Рога",
+    "бивень": "Бивни", "бивни": "Бивни", "бивня": "Бивни", "tusks": "Бивни",
+    "кожа": "Кожа", "шкура_толстая": "Кожа", "hide": "Кожа",
+    "зуб": "Зубы", "зубы": "Зубы", "teeth": "Зубы",
+    "перо": "Перья", "перья": "Перья", "feathers": "Перья",
+    "мясо": "Мясо", "мяса": "Мясо", "meat": "Мясо",
+    "чешуйка": "Чешуйки", "чешуйки": "Чешуйки", "scales": "Чешуйки",
+    "плавник": "Плавник", "плавники": "Плавник", "fin": "Плавник",
+    "жало": "Жало", "жала": "Жало", "stinger": "Жало",
+    "панцирь": "Панцирь", "shell": "Панцирь",
+    "паутина": "Паутина", "шелк": "Паутина", "silk": "Паутина",
+    "яд": "Яд", "venom": "Яд",
+    "щупальца": "Щупальца", "tentacles": "Щупальца",
+    "шерсть": "Шерсть", "wool": "Шерсть",
+    "кость": "Кость", "bone": "Кость",
+    "игла": "Иглы", "иглы": "Иглы", "quills": "Иглы",
+    "копыта": "Копыта", "hooves": "Копыта",
+    "грива": "Грива", "mane": "Грива",
+    "амбра": "Амбра", "ambergris": "Амбра",
+    "чернила": "Чернила", "ink": "Чернила",
+    "жемчуг": "Жемчуг", "pearls": "Жемчуг",
+    "обсидиан": "Обсидиан", "obsidian": "Обсидиан",
+    "сера": "Сера", "sulfur": "Сера",
+    "уголь": "Уголь", "charcoal": "Уголь",
 }
 
 _ITEM_KEYWORDS = {}
-for ru_name, drop_name in ITEM_ALIASES.items():
-    _ITEM_KEYWORDS[ru_name.lower().replace("ё", "е")] = drop_name
+for ru_name, canonical in ITEM_ALIASES.items():
+    _ITEM_KEYWORDS[ru_name.lower().replace("ё", "е")] = canonical
 
 
 def _resolve_drop_name(target_item: str) -> str:
     t = target_item.strip().lower().replace("ё", "е")
-    if t in ITEM_ALIASES.values():
-        return t
+    for k, v in ITEM_ALIASES.items():
+        if v.lower().replace("ё", "е") == t:
+            return v
     tokens = t.replace("-", " ").replace("_", " ").split()
     for tok in tokens:
         if tok in _ITEM_KEYWORDS:
             return _ITEM_KEYWORDS[tok]
-    for kw, drop in _ITEM_KEYWORDS.items():
+    for kw, canonical in _ITEM_KEYWORDS.items():
         if kw in t or t in kw:
-            return drop
-    return t
+            return canonical
+    return target_item.strip()
 
 
 def _item_name_matches(drop_item: str, target_item: str) -> bool:
@@ -138,8 +158,10 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
     # Clear track buff after use (it's only for one hunt)
     if track_buff:
         user.active_buffs.pop("track", None)
+        flag_modified(user, "active_buffs")
     if bait_type:
         user.active_buffs.pop("bait", None)
+        flag_modified(user, "active_buffs")
     user.track_uses = 0
     await session.commit()
 
@@ -220,8 +242,10 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         
         # Add drops to inventory
         for item_name, quantity in drops.items():
-            item_type = "meat" if item_name == "meat" else "material"
+            item_type = "meat" if item_name.lower() == "мясо" else "material"
             await add_inventory_item(session, user.id, item_name, item_type, quantity, animal.rarity)
+
+        await add_species_kill(session, user.id, animal.name, user.current_location, 1)
         
         # Update statistics based on mode
         animal_name_key = animal.name.lower()
@@ -231,23 +255,34 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         if user.game_mode == "free":
             user.total_hunts_free += 1
             user.successful_hunts_free += 1
+            if not user.animals_killed_free:
+                user.animals_killed_free = {}
             user.animals_killed_free[animal_name_key] = user.animals_killed_free.get(animal_name_key, 0) + 1
+            flag_modified(user, "animals_killed_free")
         else:
             user.total_hunts_story += 1
             user.successful_hunts_story += 1
+            if not user.animals_killed_story:
+                user.animals_killed_story = {}
             user.animals_killed_story[animal_name_key] = user.animals_killed_story.get(animal_name_key, 0) + 1
+            flag_modified(user, "animals_killed_story")
 
             # Update quest progress and check for completion
             active_quests = await get_active_quests(session, user.id)
 
             for uq in active_quests:
                 quest = uq.quest
+                quest_updated = False
 
                 if quest.conditions.get("kill"):
                     target_animal = quest.conditions["kill"]["animal"]
                     required_count = quest.conditions["kill"]["count"]
                     if _animal_name_matches(animal.name, target_animal):
+                        if not uq.progress:
+                            uq.progress = {}
                         uq.progress["killed"] = uq.progress.get("killed", 0) + 1
+                        flag_modified(uq, "progress")
+                        quest_updated = True
                         current_killed = uq.progress["killed"]
                         remaining = required_count - current_killed
 
@@ -277,7 +312,11 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                         if _item_name_matches(drop_name, target_item):
                             collected_now += drop_qty
                     if collected_now > 0:
+                        if not uq.progress:
+                            uq.progress = {}
                         uq.progress["collected"] = uq.progress.get("collected", 0) + collected_now
+                        flag_modified(uq, "progress")
+                        quest_updated = True
                         current_collected = uq.progress["collected"]
                         remaining = required_count - current_collected
 
@@ -323,8 +362,22 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         # Update cooldown
         user = await update_hunt_cooldown(session, user)
         
-        # Format drops text
-        drops_text = "\n".join([f"• {quantity}x {item}" for item, quantity in drops.items()])
+        # Format drops text - group by type and translate to Russian
+        from bot.game_logic.animals import drop_to_ru
+        
+        # Group drops by type
+        drops_by_type = {}
+        for item, quantity in drops.items():
+            ru_name = drop_to_ru(item)
+            if ru_name not in drops_by_type:
+                drops_by_type[ru_name] = 0
+            drops_by_type[ru_name] += quantity
+        
+        # Format grouped drops
+        drops_lines = []
+        for item_name, total_qty in sorted(drops_by_type.items()):
+            drops_lines.append(f"• {total_qty}x {item_name}")
+        drops_text = "\n".join(drops_lines) if drops_lines else "Нет добычи"
         
         rarity_emoji = {
             "common": "⚪",

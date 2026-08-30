@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from bot.keyboards.main_kb import get_main_menu_keyboard
 from bot.database.db import async_session
-from bot.database.queries import get_or_create_user
+from bot.database.queries import get_or_create_user, get_top_players_by_level
 from bot.game_logic.locations import get_location
 from bot.utils.retry import retry
 
@@ -74,7 +74,8 @@ async def cmd_help(message: Message):
         "• <code>след</code> — Найти следы (+20% шанс редкого животного, 3 энергии)\n"
         "• <code>приманка</code> — Выбрать и установить приманку (4 энергии)\n"
         "• <code>засада</code> — Засада (+30% шанс крупной добычи, 6 энергии)\n"
-        "• <code>отдых [N]</code> — Отдохнуть (съесть N порций мяса, +20 энергии каждая)\n\n"
+        "• <code>отдых [N]</code> — Отдохнуть (съесть N порций мяса, +20 энергии каждая)\n"
+        "• <code>/topl</code> — Топ 10 игроков по уровню\n\n"
         "<b>Основное меню:</b>\n"
         "• 📍 Локации — переход между локациями\n"
         "• 🎒 Инвентарь — просмотр и управление предметами\n"
@@ -95,24 +96,82 @@ async def cmd_help(message: Message):
     await message.answer(help_text, reply_to_message_id=message.message_id)
 
 
+@router.message(F.text == "/topl")
+async def cmd_top_players(message: Message):
+    async with async_session() as session:
+        top_players = await get_top_players_by_level(session, limit=10)
+        
+        if not top_players:
+            await message.answer("🏆 <b>Топ игроков</b>\n\nПока нет игроков в рейтинге!", reply_to_message_id=message.message_id)
+            return
+        
+        text = "🏆 <b>Топ 10 игроков по уровню</b>\n\n"
+        for idx, player in enumerate(top_players, 1):
+            medal = ""
+            if idx == 1:
+                medal = "🥇"
+            elif idx == 2:
+                medal = "🥈"
+            elif idx == 3:
+                medal = "🥉"
+            
+            username = player.username if player.username else f"ID: {player.telegram_id}"
+            exp_needed = player.level * player.level * 100
+            text += f"{medal} {idx}. {username} — Уровень {player.level} ({player.exp}/{exp_needed} XP)\n"
+        
+        await message.answer(text, reply_to_message_id=message.message_id)
+
+
 @router.callback_query(F.data.startswith("toggle_mode_"))
 @retry(retry_count=3)
 async def toggle_mode(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        old_mode = user.game_mode
         new_mode = "story" if user.game_mode == "free" else "free"
         user.game_mode = new_mode
 
+        extra_note = ""
+        from bot.game_logic.locations import (
+            get_unlocked_locations, get_location_order, can_unlock_location,
+            get_location, LOCATIONS
+        )
+
         if new_mode == "story":
-            from bot.game_logic.locations import get_unlocked_locations, get_location_order
             unlocked_story = get_unlocked_locations(user.location_progress, "story")
             order = get_location_order()
             unlocked_ids = [loc.id for loc in unlocked_story]
+
             best_loc_id = "forest"
             for loc_id in order:
                 if loc_id in unlocked_ids:
                     best_loc_id = loc_id
-            user.current_location = best_loc_id
+
+            loc_exists = user.current_location in LOCATIONS
+            current_unlocked = user.current_location in unlocked_ids
+            if loc_exists:
+                can_unlock = can_unlock_location(user.current_location, user.location_progress, "story")
+            else:
+                can_unlock = False
+
+            if (not loc_exists) or (not current_unlocked) or (not can_unlock):
+                old_loc_name = user.current_location
+                old_loc_obj = get_location(old_loc_name)
+                old_label = f"{old_loc_obj.emoji} {old_loc_obj.name}" if old_loc_obj else old_loc_name
+                new_loc_obj = get_location(best_loc_id)
+                new_label = f"{new_loc_obj.emoji} {new_loc_obj.name}" if new_loc_obj else best_loc_id
+                user.current_location = best_loc_id
+                extra_note = f"\n⚠️ Локация {old_label} недоступна в сюжете, переключено на {new_label}"
+            else:
+                best_loc_id = user.current_location
+                extra_note = "\n✅ Текущая локация разрешена в сюжете"
+        else:
+            if (user.current_location not in LOCATIONS) or (not can_unlock_location(user.current_location, user.location_progress, "free")):
+                old_loc = user.current_location
+                user.current_location = "forest"
+                new_loc_obj = get_location("forest")
+                new_label = f"{new_loc_obj.emoji} {new_loc_obj.name}" if new_loc_obj else "Лес"
+                extra_note = f"\n⚠️ Локация '{old_loc}' сброшена на {new_label}"
 
         await session.commit()
         await session.refresh(user)
@@ -120,17 +179,13 @@ async def toggle_mode(callback: CallbackQuery):
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
         location = get_location(user.current_location)
 
-        extra_note = ""
-        if new_mode == "story":
-            extra_note = f"\n⚠️ Локация автоматически изменена на доступную в сюжете"
-
         await callback.answer(f"✅ Режим изменён на {mode_text}!")
 
         try:
             await callback.message.edit_text(
                 f"🦌 <b>Главное меню</b>\n\n"
-                f"🎮 Режим: {mode_text}{extra_note}\n"
-                f"📍 Текущая локация: {location.emoji} {location.name}\n"
+                f"🎮 Режим: {mode_text} (было: {'Свободный' if old_mode == 'free' else 'Сюжетный'}){extra_note}\n"
+                f"📍 Текущая локация: {location.emoji if location else '📍'} {location.name if location else user.current_location}\n"
                 f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
                 f"💰 Монеты: {user.coins}\n"
                 f"⭐ Звёзды: {user.stars}\n"
