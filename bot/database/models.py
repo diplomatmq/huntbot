@@ -266,4 +266,4 @@ class HuntLog(Base):
 
     hunt_time = Column(DateTime, default=func.now())
 
-    user = relationship("User")
+    user = relationship("User", back_populates="hunt_logs")

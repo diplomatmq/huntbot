@@ -246,8 +246,8 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
             await add_inventory_item(session, user.id, item_name, item_type, quantity, animal.rarity)
 
         await add_species_kill(session, user.id, animal.name, user.current_location, 1)
-        
-        # Log the hunt
+
+        # Log the hunt (session will be committed later)
         await log_hunt(
             session, user.id, animal.name, animal.emoji, user.current_location,
             animal.rarity, weight, exp, coins, drops, True, user.game_mode

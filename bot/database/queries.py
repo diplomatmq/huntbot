@@ -329,9 +329,10 @@ async def get_species_for_user(session: AsyncSession, user_id: int) -> dict:
 
 
 async def get_active_quests(session: AsyncSession, user_id: int) -> list[UserQuest]:
+    from sqlalchemy.orm import selectinload
     result = await session.execute(
-        select(UserQuest).where(
-            and_(UserQuest.user_id == user_id, UserQuest.status == "active")
+        select(UserQuest).options(selectinload(UserQuest.quest)).where(
+            UserQuest.user_id == user_id, UserQuest.status == "active"
         )
     )
     return result.scalars().all()
@@ -382,19 +383,19 @@ async def get_top_players_by_level(session: AsyncSession, limit: int = 10) -> li
     return result.scalars().all()
 
 
-async def log_hunt(session: AsyncSession, user_id: int, animal_name: str, animal_emoji: str, 
-                location: str, rarity: str, weight: float, exp: int, coins: int, 
+async def log_hunt(session: AsyncSession, user_id: int, animal_name: str, animal_emoji: str,
+                location: str, rarity: str, weight: float, exp: int, coins: int,
                 drops: dict, is_successful: bool, game_mode: str):
-    """Log a hunt to the HuntLog table."""
+    """Log a hunt to the HuntLog table. Note: caller must commit the session."""
     from bot.database.models import HuntLog
     from bot.game_logic.animals import drop_to_ru
-    
+
     # Convert drops to Russian names
     drops_ru = {}
     for item, quantity in drops.items():
         ru_name = drop_to_ru(item)
         drops_ru[ru_name] = drops_ru.get(ru_name, 0) + quantity
-    
+
     hunt_log = HuntLog(
         user_id=user_id,
         animal_name=animal_name,
@@ -409,7 +410,6 @@ async def log_hunt(session: AsyncSession, user_id: int, animal_name: str, animal
         game_mode=game_mode
     )
     session.add(hunt_log)
-    await session.commit()
 
 
 async def migrate_animal_species(session: AsyncSession) -> bool:
