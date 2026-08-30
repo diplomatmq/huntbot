@@ -8,6 +8,11 @@ from bot.keyboards.shop_kb import get_shop_keyboard, get_shop_category_keyboard,
 
 router = Router()
 
+# Users waiting to input ammo quantity
+_ammo_quantity_wait = set()
+# Track selected ammo type and price per user: {user_id: {"name": "Стрелы", "price": 5}}
+_ammo_selection = {}
+
 
 def _is_shop_main_callback(data: str) -> bool:
     parts = data.split("_")
@@ -50,8 +55,8 @@ async def show_shop_category(callback: CallbackQuery):
                 {"name": "Дробовик", "price": 10000, "currency": "coins", "type": "shotgun"},
             ],
             "ammo": [
-                {"name": "Стрелы (10шт)", "price": 50, "currency": "coins", "type": "arrows"},
-                {"name": "Патроны (10шт)", "price": 100, "currency": "coins", "type": "bullets"},
+                {"name": "Стрелы", "price": 5, "currency": "coins", "type": "arrows"},
+                {"name": "Патроны", "price": 10, "currency": "coins", "type": "bullets"},
             ],
             "bait": [
                 {"name": "Приманка травоядная", "price": 25, "currency": "coins", "type": "bait_herbivore"},
@@ -178,13 +183,30 @@ async def buy_item(callback: CallbackQuery):
                 item_type = "bait"
             elif "стрелы" in item_name.lower() or "патроны" in item_name.lower():
                 item_type = "ammo"
-                # Parse quantity from parentheses like (10шт) or (54шт)
-                import re
-                match = re.search(r"\((\d+)шт\)", item_name)
-                if match:
-                    quantity = int(match.group(1))
-                    # Extract base name without parentheses
-                    item_name = re.sub(r"\s*\(\d+шт\)", "", item_name).strip()
+                # Request quantity input for ammo
+                max_quantity = user.coins // price if currency == "coins" else 0
+                if max_quantity == 0:
+                    await callback.answer("❌ Недостаточно монет!", show_alert=True)
+                    return
+
+                # Store selected ammo info
+                _ammo_selection[callback.from_user.id] = {"name": item_name, "price": price}
+                _ammo_quantity_wait.add(callback.from_user.id)
+                text = (
+                    f"💨 <b>Покупка {item_name}</b>\n\n"
+                    f"Цена за 1 шт: {price} 💰\n"
+                    f"Ваши монеты: {user.coins} 💰\n"
+                    f"Максимум можно купить: {max_quantity} шт\n\n"
+                    f"👉 Введите количество для покупки\n"
+                    f"👉 Введите <b>0</b> для отмены"
+                )
+                try:
+                    await callback.message.edit_text(text)
+                except (TelegramBadRequest, TelegramRetryAfter) as e:
+                    if "message is not modified" not in str(e):
+                        raise
+                await callback.answer()
+                return
             elif "зелье" in item_name.lower():
                 item_type = "potion"
 
@@ -196,6 +218,55 @@ async def buy_item(callback: CallbackQuery):
     
     # Refresh shop
     await show_shop(callback)
+
+
+@router.message(F.text.isdigit())
+async def handle_ammo_quantity_input(message: Message):
+    """Handle ammo quantity input from user"""
+    uid = message.from_user.id
+    if uid not in _ammo_quantity_wait:
+        return
+
+    _ammo_quantity_wait.discard(uid)
+
+    try:
+        quantity = int(message.text)
+    except ValueError:
+        await message.answer("❌ Введите число!", reply_to_message_id=message.message_id)
+        return
+
+    if quantity <= 0:
+        await message.answer("🚫 Покупка отменена.", reply_to_message_id=message.message_id)
+        return
+
+    # Get selected ammo info
+    ammo_info = _ammo_selection.get(uid)
+    if not ammo_info:
+        await message.answer("❌ Ошибка выбора предмета. Попробуйте снова.", reply_to_message_id=message.message_id)
+        return
+
+    item_name = ammo_info["name"]
+    price_per_unit = ammo_info["price"]
+    total_price = quantity * price_per_unit
+
+    async with async_session() as session:
+        user = await get_or_create_user(session, uid, message.from_user.username)
+
+        if user.coins < total_price:
+            await message.answer("❌ Недостаточно монет!", reply_to_message_id=message.message_id)
+            return
+
+        user.coins -= total_price
+        await add_inventory_item(session, user.id, item_name, "ammo", quantity, "common")
+        await session.commit()
+
+        await message.answer(
+            f"✅ Куплено {quantity} {item_name} за {total_price} монет!",
+            reply_to_message_id=message.message_id
+        )
+
+    # Clean up selection
+    _ammo_selection.pop(uid, None)
 
 
 # Payment handlers for potions
