@@ -220,12 +220,10 @@ async def buy_item(callback: CallbackQuery):
     await show_shop(callback)
 
 
-@router.message(F.text.isdigit())
+@router.message(F.text.isdigit(), F.from_user.id.in_(_ammo_quantity_wait))
 async def handle_ammo_quantity_input(message: Message):
     """Handle ammo quantity input from user"""
     uid = message.from_user.id
-    if uid not in _ammo_quantity_wait:
-        return
 
     _ammo_quantity_wait.discard(uid)
 
