@@ -38,6 +38,12 @@ def _animal_name_matches(hunted_name: str, target_name: str) -> bool:
     t = target_name.strip().lower()
     if a == t:
         return True
+    # Handle English names
+    if a == ru_to_drop(t) or t == ru_to_drop(a):
+        return True
+    if a == drop_to_ru(t) or t == drop_to_ru(a):
+        return True
+    # Handle partial matches for animal species (e.g., "русский заяц" matches "заяц")
     if t in a or a in t:
         return True
     a_tokens = set(a.replace("-", " ").replace("ё", "е").split())
@@ -169,13 +175,15 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
     
     if is_hit:
         logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) HIT!")
-        
+
         # Select animal with higher chance for rare animals if guaranteed
         if is_guaranteed:
             # For guaranteed hunts, increase rare animal chances significantly
             animal = select_random_animal(user.current_location, track_buff=True, bait_type=bait_type)
         else:
             animal = select_random_animal(user.current_location, track_buff, bait_type)
+
+        logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) SELECTED {animal.name}")
         
         # Check if weapon can kill the animal (skip for guaranteed hunts)
         if not is_guaranteed:

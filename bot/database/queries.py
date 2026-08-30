@@ -417,33 +417,36 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
     from bot.database.models import AnimalSpecies
     from bot.game_logic.animals import get_animal_location
     import logging
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # Check if migration already done (check if any user has the flag set)
     result = await session.execute(select(User).where(User.animal_species_migration_done == True).limit(1))
     already_migrated = result.scalar_one_or_none()
-    
+
     if already_migrated:
         logger.info("AnimalSpecies migration already done, skipping.")
         return False
-    
+
     logger.info("Starting AnimalSpecies migration...")
-    
+
     # Get all users
     result = await session.execute(select(User))
     users = result.scalars().all()
-    
+
     migrated_count = 0
     total_records = 0
-    
+
     for user in users:
         user_migrated = False
-        
+        logger.info(f"Processing user {user.id} (@{user.username})")
+
         # Process free mode kills
         if user.animals_killed_free:
+            logger.info(f"User {user.id} has animals_killed_free: {user.animals_killed_free}")
             for animal_name, count in user.animals_killed_free.items():
                 location = get_animal_location(animal_name)
+                logger.info(f"Animal: {animal_name}, Location: {location}")
                 if location:
                     # Check if already exists
                     existing = await session.execute(
@@ -456,7 +459,7 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                         )
                     )
                     existing_record = existing.scalar_one_or_none()
-                    
+
                     if existing_record:
                         existing_record.total_killed += count
                     else:
@@ -471,11 +474,13 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                     user_migrated = True
                 else:
                     logger.warning(f"Could not find location for animal: {animal_name}")
-        
+
         # Process story mode kills
         if user.animals_killed_story:
+            logger.info(f"User {user.id} has animals_killed_story: {user.animals_killed_story}")
             for animal_name, count in user.animals_killed_story.items():
                 location = get_animal_location(animal_name)
+                logger.info(f"Animal: {animal_name}, Location: {location}")
                 if location:
                     # Check if already exists
                     existing = await session.execute(
@@ -488,7 +493,7 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                         )
                     )
                     existing_record = existing.scalar_one_or_none()
-                    
+
                     if existing_record:
                         existing_record.total_killed += count
                     else:
@@ -503,7 +508,7 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
                     user_migrated = True
                 else:
                     logger.warning(f"Could not find location for animal: {animal_name}")
-        
+
         # Mark user as migrated only if they had data
         if user_migrated:
             user.animal_species_migration_done = True
@@ -511,7 +516,7 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
         else:
             # Mark as migrated even if no data to avoid re-checking
             user.animal_species_migration_done = True
-    
+
     await session.commit()
     logger.info(f"AnimalSpecies migration completed. Migrated {migrated_count} users, created {total_records} records.")
     return True
