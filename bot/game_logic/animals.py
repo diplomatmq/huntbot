@@ -446,12 +446,11 @@ def get_animals_for_location(location: str) -> List[AnimalData]:
 
 
 def get_total_animal_count() -> int:
-    """Get total count of unique animal species across all locations."""
-    seen_animals = set()
+    """Get total count of animal entries across all locations."""
+    total = 0
     for location, animals in ANIMALS_BY_LOCATION.items():
-        for animal in animals:
-            seen_animals.add(animal.name)
-    return len(seen_animals)
+        total += len(animals)
+    return total
 
 
 def select_random_animal(location: str, track_buff: bool = False, bait_type: str = None) -> AnimalData:

@@ -444,6 +444,9 @@ async def get_species_for_user(session: AsyncSession, user_id: int) -> dict:
     total_kinds = 0
     total_killed = 0
     for s in species:
+        # Skip ocean and volcano locations
+        if s.location in ["ocean", "volcano"]:
+            continue
         by_loc.setdefault(s.location, []).append((s.animal_name, s.total_killed))
         total_kinds += 1
         total_killed += s.total_killed

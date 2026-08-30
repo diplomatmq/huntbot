@@ -173,6 +173,9 @@ async def show_animals(callback: CallbackQuery):
         
         if by_location:
             for location_id, animals in sorted(by_location.items()):
+                # Skip ocean and volcano locations
+                if location_id in ["ocean", "volcano"]:
+                    continue
                 loc_name = location_names.get(location_id, location_id)
                 text += f"<b>{loc_name}</b> ({len(animals)} видов):\n"
                 for animal_name, count in sorted(animals):
