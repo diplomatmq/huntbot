@@ -1,4 +1,4 @@
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from bot.database.models import User, Inventory, Weapon, Quest, UserQuest, Animal, Trophy, AuctionLot, StarsTransaction
