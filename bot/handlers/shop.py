@@ -251,6 +251,7 @@ async def process_pre_checkout_query_shop(pre_checkout_query: PreCheckoutQuery):
 
 async def handle_shop_payment(message: Message, payload: str, telegram_payment_id: str):
     """Handle successful shop payment (called from hunt.py)"""
+    global paid_shop_payloads
     successful_payment = message.successful_payment
     star_cost = successful_payment.total_amount
 
