@@ -300,6 +300,10 @@ async def handle_shop_payment(message: Message, payload: str, telegram_payment_i
         elif "стрелы" in item_name.lower() or "патроны" in item_name.lower():
             item_type = "ammo"
 
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[SHOP_PAYMENT] Adding item: name='{item_name}', type='{item_type}'")
+
         await add_inventory_item(session, user.id, item_name, item_type, 1, "common")
         await session.commit()
 

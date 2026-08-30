@@ -465,12 +465,12 @@ async def use_potion(callback: CallbackQuery):
         # Apply potion effects
         effect_text = ""
         logger.info(f"[POTION] Checking potion name: '{potion.item_name.lower()}'")
-        if "энергия" in potion.item_name.lower():
+        if potion.item_name.lower() == "зелье энергии":
             energy_gain = 20
             user = await update_energy(session, user, energy_gain)
             effect_text = f"⚡ +{energy_gain} энергии"
             logger.info(f"[POTION] Applied energy potion")
-        elif "удача" in potion.item_name.lower():
+        elif potion.item_name.lower() == "зелье удачи":
             if not user.active_buffs:
                 user.active_buffs = {}
             user.active_buffs["luck"] = {"type": "luck", "uses": 5}
