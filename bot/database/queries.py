@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 from bot.config import MAX_ENERGY, ENERGY_REGEN_PASSIVE
 
 
+async def get_all_users(session: AsyncSession) -> list[User]:
+    """Get all users from the database."""
+    result = await session.execute(select(User))
+    return result.scalars().all()
+
+
 ALL_LOCATION_KEYS = [
     "forest", "taiga", "mountains", "steppe",
     "desert", "jungle", "swamp", "tundra",

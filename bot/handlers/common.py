@@ -40,7 +40,7 @@ def _is_menu_hant_command(text: str) -> bool:
     tokens = t.split()[:2]
     if len(tokens) < 2:
         return False
-    return tokens[0] in {"меню", "menu", "/menu"} and tokens[1] in {"хант", "hant", "охота", "hunt"}
+    return tokens[0] in {"хант", "hant", "охота", "hunt"} and tokens[1] in {"меню", "menu"}
 
 
 @router.message(lambda msg: _is_menu_hant_command(msg.text or ""))
@@ -69,7 +69,7 @@ async def cmd_help(message: Message):
     help_text = (
         "📖 <b>Справка по игре «Охота»</b>\n\n"
         "<b>Команды в чате:</b>\n"
-        "• <code>меню хант</code> / <code>menu hunt</code> — Открыть главное меню\n"
+        "• <code>хант меню</code> / <code>hunt menu</code> — Открыть главное меню\n"
         "• <code>хант</code> или <code>выстрел</code> — Охотиться (5 энергии)\n"
         "• <code>след</code> — Найти следы (+20% шанс редкого животного, 3 энергии)\n"
         "• <code>приманка</code> — Выбрать и установить приманку (4 энергии)\n"
