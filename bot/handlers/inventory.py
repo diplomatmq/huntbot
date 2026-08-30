@@ -333,6 +333,10 @@ async def equip_menu(callback: CallbackQuery):
     import logging
     logger = logging.getLogger(__name__)
 
+    # Check if this is equip_weapon callback - skip if so
+    if callback.data.startswith("equip_weapon_"):
+        return
+
     logger.info(f"[EQUIP_MENU] User {callback.from_user.id} opened equip menu, callback_data: {callback.data}")
 
     async with async_session() as session:
