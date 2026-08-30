@@ -431,7 +431,6 @@ async def take_quest(callback: CallbackQuery):
                 completed_uq.progress = {}
                 await session.commit()
                 await callback.answer(f"🔄 Квест «{quest.title}» взят снова!")
-                callback.data = f"questlist_active_1_{callback.from_user.id}"
                 await show_quest_list(callback)
                 return
 
@@ -440,5 +439,4 @@ async def take_quest(callback: CallbackQuery):
         await session.commit()
 
     await callback.answer(f"✅ Квест «{quest.title}» взят!")
-    callback.data = f"questlist_active_1_{callback.from_user.id}"
     await show_quest_list(callback)

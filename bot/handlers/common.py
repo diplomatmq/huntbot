@@ -124,15 +124,6 @@ async def cmd_top_players(message: Message):
         await message.answer(text, reply_to_message_id=message.message_id)
 
 
-@router.message(F.text == "/migrate_locations")
-async def cmd_migrate_locations(message: Message):
-    from bot.database.queries import migrate_removed_locations
-
-    async with async_session() as session:
-        await migrate_removed_locations(session)
-        await message.answer("✅ Миграция локаций завершена. Пользователи из океана и вулкана перемещены в лес.", reply_to_message_id=message.message_id)
-
-
 @router.callback_query(F.data.startswith("toggle_mode_"))
 @retry(retry_count=3)
 async def toggle_mode(callback: CallbackQuery):
