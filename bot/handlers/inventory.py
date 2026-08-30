@@ -60,7 +60,7 @@ async def get_user_weapons(session, user_id: int):
 
 def get_sell_keyboard(user_id: int, items):
     buttons = []
-    sellable_items = [item for item in items if item.item_type not in ["weapon", "potion"]]
+    sellable_items = [item for item in items if item.item_type in ["meat", "skin", "material"]]
     if sellable_items:
         buttons.append([InlineKeyboardButton(text="💰 Продать всё (ввести кол-во)", callback_data=f"sell_all_items_{user_id}")])
         buttons.append([InlineKeyboardButton(text="➖➖➖➖➖", callback_data="separator")])
@@ -214,7 +214,7 @@ async def sell_all_items(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         inventory_items = await get_user_inventory_items(session, user.id)
-        sellable_items = [item for item in inventory_items if item.item_type not in ["weapon", "potion"]]
+        sellable_items = [item for item in inventory_items if item.item_type in ["meat", "skin", "material"]]
 
         if not sellable_items:
             await callback.answer("❌ Нет предметов для продажи!", show_alert=True)
@@ -304,7 +304,7 @@ async def handle_sell_quantity(message: Message):
         async with async_session() as session:
             user = await get_or_create_user(session, uid, message.from_user.username)
             inventory_items = await get_user_inventory_items(session, user.id)
-            sellable_items = [item for item in inventory_items if item.item_type not in ["weapon", "potion"]]
+            sellable_items = [item for item in inventory_items if item.item_type in ["meat", "skin", "material"]]
 
             if not sellable_items:
                 await message.answer("❌ Нет предметов для продажи!")
@@ -327,15 +327,11 @@ async def handle_sell_quantity(message: Message):
         return
 
 
-@router.callback_query(F.data.startswith("equip_"))
+@router.callback_query(F.data.regexp(r"^equip_\d+$"))
 @retry(retry_count=3)
 async def equip_menu(callback: CallbackQuery):
     import logging
     logger = logging.getLogger(__name__)
-
-    # Check if this is equip_weapon callback - skip if so
-    if callback.data.startswith("equip_weapon_"):
-        return
 
     logger.info(f"[EQUIP_MENU] User {callback.from_user.id} opened equip menu, callback_data: {callback.data}")
 
@@ -406,13 +402,20 @@ def get_potions_keyboard(user_id: int, potions):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.callback_query(F.data.startswith("use_potions_"))
+@router.callback_query(F.data.regexp(r"^use_potions_\d+$"))
 @retry(retry_count=3)
 async def use_potions_menu(callback: CallbackQuery):
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"[POTIONS_MENU] User {callback.from_user.id} opened potions menu, callback_data: {callback.data}")
+
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         inventory_items = await get_user_inventory_items(session, user.id)
         potions = [item for item in inventory_items if item.item_type == "potion"]
+
+        logger.info(f"[POTIONS_MENU] User {callback.from_user.id} has {len(potions)} potions")
 
         if not potions:
             text = "🧪 <b>Зелья</b>\n\nУ вас нет зелий! Посетите магазин!"
