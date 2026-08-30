@@ -129,7 +129,6 @@ async def cmd_migrate_animals(message: Message):
     from sqlalchemy import update
     
     async with async_session() as session:
-        # Reset migration flag for ALL users
         await session.execute(update(User).values(animal_species_migration_done=False))
         await session.commit()
         
@@ -139,7 +138,16 @@ async def cmd_migrate_animals(message: Message):
         if migration_performed:
             await message.answer("✅ Миграция животных выполнена успешно!", reply_to_message_id=message.message_id)
         else:
-            await message.answer("ℹ️ Миграция уже была выполнена ранее.", reply_to_message_id=message.message_id)
+            await message.answer("ℹ️ Миграция животных уже была выполнена.", reply_to_message_id=message.message_id)
+
+
+@router.message(F.text == "/migrate_ammo")
+async def cmd_migrate_ammo(message: Message):
+    from bot.database.queries import migrate_old_ammo_names
+
+    async with async_session() as session:
+        await migrate_old_ammo_names(session)
+        await message.answer("✅ Миграция боеприпасов выполнена успешно!", reply_to_message_id=message.message_id)
 
 
 @router.callback_query(F.data.startswith("toggle_mode_"))

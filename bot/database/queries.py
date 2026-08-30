@@ -256,6 +256,59 @@ async def consume_inventory_item(session: AsyncSession, user_id: int, item_name:
     return False
 
 
+async def migrate_old_ammo_names(session: AsyncSession):
+    """Migrate old ammo item names from 'Стрелы (10шт)' to 'Стрелы' with correct quantity"""
+    import logging
+    import re
+    logger = logging.getLogger(__name__)
+
+    logger.info("[MIGRATION] Starting ammo name migration")
+
+    # Find all old ammo items
+    old_ammo_result = await session.execute(
+        select(Inventory).where(
+            or_(
+                Inventory.item_name.like("%стрелы%"),
+                Inventory.item_name.like("%патроны%")
+            )
+        )
+    )
+    old_items = old_ammo_result.scalars().all()
+
+    for item in old_items:
+        # Parse quantity from parentheses like (10шт) or (54шт)
+        match = re.search(r"\((\d+)шт\)", item.item_name)
+        if match:
+            quantity_multiplier = int(match.group(1))
+            # Extract base name without parentheses
+            base_name = re.sub(r"\s*\(\d+шт\)", "", item.item_name).strip()
+            logger.info(f"[MIGRATION] Migrating '{item.item_name}' to '{base_name}' with quantity {item.quantity * quantity_multiplier}")
+
+            # Check if new name already exists
+            existing_result = await session.execute(
+                select(Inventory).where(
+                    and_(
+                        Inventory.user_id == item.user_id,
+                        Inventory.item_name == base_name,
+                        Inventory.item_type == item.item_type
+                    )
+                )
+            )
+            existing = existing_result.scalar_one_or_none()
+
+            if existing:
+                # Add quantity to existing item
+                existing.quantity += item.quantity * quantity_multiplier
+                await session.delete(item)
+            else:
+                # Rename and update quantity
+                item.item_name = base_name
+                item.quantity = item.quantity * quantity_multiplier
+
+    await session.commit()
+    logger.info(f"[MIGRATION] Migrated {len(old_items)} ammo items")
+
+
 async def update_location_progress(session: AsyncSession, user: User, location: str, progress_add: float) -> User:
     if not user.location_progress:
         user.location_progress = {}

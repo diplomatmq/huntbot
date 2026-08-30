@@ -173,14 +173,22 @@ async def buy_item(callback: CallbackQuery):
         else:
             # Add to inventory
             item_type = "material"
+            quantity = 1
             if "приманка" in item_name.lower():
                 item_type = "bait"
             elif "стрелы" in item_name.lower() or "патроны" in item_name.lower():
                 item_type = "ammo"
+                # Parse quantity from parentheses like (10шт) or (54шт)
+                import re
+                match = re.search(r"\((\d+)шт\)", item_name)
+                if match:
+                    quantity = int(match.group(1))
+                    # Extract base name without parentheses
+                    item_name = re.sub(r"\s*\(\d+шт\)", "", item_name).strip()
             elif "зелье" in item_name.lower():
                 item_type = "potion"
-            
-            await add_inventory_item(session, user.id, item_name, item_type, 1, "common")
+
+            await add_inventory_item(session, user.id, item_name, item_type, quantity, "common")
         
         await session.commit()
     
@@ -296,16 +304,24 @@ async def handle_shop_payment(message: Message, payload: str, telegram_payment_i
 
         # Add item to inventory
         item_type = "potion"
+        quantity = 1
         if "приманка" in item_name.lower():
             item_type = "bait"
         elif "стрелы" in item_name.lower() or "патроны" in item_name.lower():
             item_type = "ammo"
+            # Parse quantity from parentheses like (10шт) or (54шт)
+            import re
+            match = re.search(r"\((\d+)шт\)", item_name)
+            if match:
+                quantity = int(match.group(1))
+                # Extract base name without parentheses
+                item_name = re.sub(r"\s*\(\d+шт\)", "", item_name).strip()
 
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"[SHOP_PAYMENT] Adding item: name='{item_name}', type='{item_type}'")
+        logger.info(f"[SHOP_PAYMENT] Adding item: name='{item_name}', type='{item_type}', quantity={quantity}")
 
-        await add_inventory_item(session, user.id, item_name, item_type, 1, "common")
+        await add_inventory_item(session, user.id, item_name, item_type, quantity, "common")
         await session.commit()
 
         await message.answer(
