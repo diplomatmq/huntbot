@@ -369,6 +369,22 @@ async def add_coins(session: AsyncSession, user: User, coins: int) -> User:
     return user
 
 
+async def add_exp(session: AsyncSession, user: User, exp: int) -> User:
+    """Add experience to user and handle level ups"""
+    user.exp += exp
+
+    # Check for level up
+    exp_needed = user.level * user.level * 100
+    while user.exp >= exp_needed:
+        user.exp -= exp_needed
+        user.level += 1
+        exp_needed = user.level * user.level * 100
+
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
 async def update_location_progress(session: AsyncSession, user: User, location: str, progress_add: float) -> User:
     """Update progress for a specific location"""
     if location not in user.location_progress:
