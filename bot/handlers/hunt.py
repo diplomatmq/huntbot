@@ -139,6 +139,23 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
     weapon = await get_equipped_weapon(session, user.id)
     weapon_type = weapon.weapon_type if weapon else "bow"
     weapon_durability = weapon.durability if weapon else 100
+
+    # Consume ammo based on weapon type
+    ammo_type = None
+    ammo_name = None
+    if weapon_type in ["bow", "crossbow"]:
+        ammo_type = "ammo"
+        ammo_name = "стрелы"
+    elif weapon_type in ["rifle", "shotgun"]:
+        ammo_type = "ammo"
+        ammo_name = "патроны"
+
+    if ammo_type and ammo_name:
+        has_ammo = await consume_inventory_item(session, user.id, ammo_name, ammo_type, 1)
+        if not has_ammo:
+            await message_obj.answer(f"❌ У вас нет {ammo_name}! Купите их в магазине.", reply_to_message_id=reply_to_message_id)
+            logger.warning(f"[HUNT] User {user.telegram_id} failed hunt: no {ammo_name}")
+            return
     
     track_buff = user.active_buffs.get("track", {}).get("active", False)
     track_bonus = user.active_buffs.get("track", {}).get("bonus", 0)
