@@ -345,10 +345,17 @@ async def equip_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("equip_weapon_"))
 @retry(retry_count=3)
 async def equip_weapon(callback: CallbackQuery):
+    import logging
+    logger = logging.getLogger(__name__)
+
     weapon_id = int(callback.data.split("_")[2])
+    logger.info(f"[EQUIP] User {callback.from_user.id} trying to equip weapon_id={weapon_id}")
+
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         weapons = await get_user_weapons(session, user.id)
+
+        logger.info(f"[EQUIP] User {callback.from_user.id} has {len(weapons)} weapons")
 
         for weapon in weapons:
             weapon.is_equipped = False
@@ -357,12 +364,15 @@ async def equip_weapon(callback: CallbackQuery):
         selected_weapon = result.scalar_one_or_none()
 
         if not selected_weapon:
+            logger.warning(f"[EQUIP] Weapon {weapon_id} not found for user {callback.from_user.id}")
             await callback.answer("❌ Оружие не найдено!", show_alert=True)
             return
 
+        logger.info(f"[EQUIP] Found weapon: {selected_weapon.weapon_type}")
         selected_weapon.is_equipped = True
         await session.commit()
 
+        logger.info(f"[EQUIP] Successfully equipped {selected_weapon.weapon_type}")
         await callback.answer(f"✅ Экипировано {selected_weapon.weapon_type.capitalize()}!", show_alert=True)
         await show_inventory(callback)
 
