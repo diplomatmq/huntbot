@@ -151,7 +151,9 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         ammo_name = "патроны"
 
     if ammo_type and ammo_name:
+        logger.info(f"[HUNT] User {user.telegram_id} weapon_type={weapon_type}, checking for ammo: name='{ammo_name}', type='{ammo_type}'")
         has_ammo = await consume_inventory_item(session, user.id, ammo_name, ammo_type, 1)
+        logger.info(f"[HUNT] User {user.telegram_id} ammo check result: {has_ammo}")
         if not has_ammo:
             await message_obj.answer(f"❌ У вас нет {ammo_name}! Купите их в магазине.", reply_to_message_id=reply_to_message_id)
             logger.warning(f"[HUNT] User {user.telegram_id} failed hunt: no {ammo_name}")
