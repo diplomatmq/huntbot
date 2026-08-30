@@ -67,6 +67,7 @@ class User(Base):
     trophies = relationship("Trophy", back_populates="user", cascade="all, delete-orphan")
     auction_lots = relationship("AuctionLot", back_populates="seller", cascade="all, delete-orphan")
     animal_species = relationship("AnimalSpecies", back_populates="user", cascade="all, delete-orphan")
+    hunt_logs = relationship("HuntLog", cascade="all, delete-orphan")
 
 
 class Inventory(Base):
@@ -141,6 +142,7 @@ class UserQuest(Base):
     completed_at = Column(DateTime, nullable=True)
     
     user = relationship("User", back_populates="user_quests")
+    quest = relationship("Quest")
 
 
 class Animal(Base):
@@ -240,3 +242,28 @@ class AnimalSpecies(Base):
     total_killed = Column(Integer, default=0)
 
     user = relationship("User", back_populates="animal_species")
+
+
+class HuntLog(Base):
+    __tablename__ = "hunt_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    animal_name = Column(String, nullable=False)
+    animal_emoji = Column(String, nullable=False)
+    location = Column(String, nullable=False)
+    rarity = Column(String, nullable=False)
+
+    weight = Column(Float, nullable=False)
+    exp_gained = Column(Integer, default=0)
+    coins_gained = Column(Integer, default=0)
+
+    drops = Column(JSON, default={})  # {"Мясо": 2, "Шкура": 1}
+
+    is_successful = Column(Boolean, default=True)
+    game_mode = Column(String, default="free")  # free or story
+
+    hunt_time = Column(DateTime, default=func.now())
+
+    user = relationship("User")

@@ -125,16 +125,12 @@ async def cmd_top_players(message: Message):
 @router.message(F.text == "/migrate_animals")
 async def cmd_migrate_animals(message: Message):
     from bot.database.queries import migrate_animal_species
+    from bot.database.models import User
+    from sqlalchemy import update
     
     async with async_session() as session:
-        # Reset migration flag for current user
-        from bot.database.models import User
-        from sqlalchemy import update
-        
-        user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
-        
-        # Reset flag
-        user.animal_species_migration_done = False
+        # Reset migration flag for ALL users
+        await session.execute(update(User).values(animal_species_migration_done=False))
         await session.commit()
         
         # Run migration
