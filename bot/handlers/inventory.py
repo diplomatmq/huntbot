@@ -254,12 +254,18 @@ def _user_in_sell_flow(uid: int) -> bool:
 
 @router.message(F.text.func(lambda text: isinstance(text, str) and text.strip().isdigit() and True))
 async def handle_sell_quantity(message: Message):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     uid = message.from_user.id
+    logger.info(f"[SELL_QUANTITY] User {uid} sent: {message.text}, in_sell_wait: {uid in _sell_wait}, in_sell_all_wait: {uid in _sell_all_wait}")
+    
     if not _user_in_sell_flow(uid):
         return
 
     text = (message.text or "").strip()
     qty = int(text)
+    logger.info(f"[SELL_QUANTITY] Processing qty: {qty} for user {uid}")
 
     if uid in _sell_wait:
         spec = _sell_wait.pop(uid)
