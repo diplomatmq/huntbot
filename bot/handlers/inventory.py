@@ -413,6 +413,11 @@ async def use_potions_menu(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         inventory_items = await get_user_inventory_items(session, user.id)
+
+        # Log all inventory items to debug
+        for item in inventory_items:
+            logger.info(f"[POTIONS_MENU] Inventory item: name='{item.item_name}', type='{item.item_type}'")
+
         potions = [item for item in inventory_items if item.item_type == "potion"]
 
         logger.info(f"[POTIONS_MENU] User {callback.from_user.id} has {len(potions)} potions")
@@ -467,7 +472,7 @@ async def use_potion(callback: CallbackQuery):
         logger.info(f"[POTION] Checking potion name: '{potion.item_name.lower()}'")
         if potion.item_name.lower() == "зелье энергии":
             energy_gain = 20
-            user = await update_energy(session, user, energy_gain)
+            user.energy = min(user.max_energy, user.energy + energy_gain)
             effect_text = f"⚡ +{energy_gain} энергии"
             logger.info(f"[POTION] Applied energy potion")
         elif potion.item_name.lower() == "зелье удачи":
