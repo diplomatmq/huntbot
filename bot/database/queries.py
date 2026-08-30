@@ -219,6 +219,19 @@ async def add_inventory_item(session: AsyncSession, user_id: int, item_name: str
 
 
 async def consume_inventory_item(session: AsyncSession, user_id: int, item_name: str, item_type: str, quantity: int = 1) -> bool:
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"[CONSUME] Looking for: user_id={user_id}, name='{item_name}', type='{item_type}', quantity={quantity}")
+
+    # Log all items for this user to debug
+    all_items_result = await session.execute(
+        select(Inventory).where(Inventory.user_id == user_id)
+    )
+    all_items = all_items_result.scalars().all()
+    for item in all_items:
+        logger.info(f"[CONSUME] User has item: name='{item.item_name}', type='{item.item_type}', quantity={item.quantity}")
+
     result = await session.execute(
         select(Inventory).where(
             and_(
@@ -229,13 +242,17 @@ async def consume_inventory_item(session: AsyncSession, user_id: int, item_name:
         )
     )
     item = result.scalar_one_or_none()
-    
+
+    logger.info(f"[CONSUME] Found item: {item is not None}")
+
     if item and item.quantity >= quantity:
         item.quantity -= quantity
         if item.quantity <= 0:
             await session.delete(item)
         await session.commit()
+        logger.info(f"[CONSUME] Successfully consumed {quantity} of {item_name}")
         return True
+    logger.warning(f"[CONSUME] Failed to consume: item={item is not None}, quantity={item.quantity if item else 0}, needed={quantity}")
     return False
 
 
