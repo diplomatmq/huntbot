@@ -390,8 +390,8 @@ async def migrate_animal_species(session: AsyncSession) -> bool:
     
     logger = logging.getLogger(__name__)
     
-    # Check if migration already done
-    result = await session.execute(select(User).where(User.animal_species_migration_done == True))
+    # Check if migration already done (check if any user has the flag set)
+    result = await session.execute(select(User).where(User.animal_species_migration_done == True).limit(1))
     already_migrated = result.scalar_one_or_none()
     
     if already_migrated:
