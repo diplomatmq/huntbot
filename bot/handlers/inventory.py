@@ -78,13 +78,18 @@ def get_sell_keyboard(user_id: int, items):
 
 
 def get_equip_keyboard(user_id: int, weapons):
+    import logging
+    logger = logging.getLogger(__name__)
+
     buttons = []
     for weapon in weapons:
         status = " (экипирован)" if weapon.is_equipped else ""
+        callback_data = f"equip_weapon_{weapon.id}_{user_id}"
+        logger.info(f"[EQUIP_KEYBOARD] Weapon: {weapon.weapon_type}, ID: {weapon.id}, callback_data: {callback_data}")
         buttons.append([
             InlineKeyboardButton(
                 text=f"{weapon.weapon_type.capitalize()}{status}",
-                callback_data=f"equip_weapon_{weapon.id}_{user_id}"
+                callback_data=callback_data
             )
         ])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"inventory_{user_id}")])
@@ -325,9 +330,16 @@ async def handle_sell_quantity(message: Message):
 @router.callback_query(F.data.startswith("equip_"))
 @retry(retry_count=3)
 async def equip_menu(callback: CallbackQuery):
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"[EQUIP_MENU] User {callback.from_user.id} opened equip menu, callback_data: {callback.data}")
+
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         weapons = await get_user_weapons(session, user.id)
+
+        logger.info(f"[EQUIP_MENU] User {callback.from_user.id} has {len(weapons)} weapons")
 
         if not weapons:
             await callback.answer("❌ У вас нет оружия для экипировки!", show_alert=True)
@@ -420,32 +432,45 @@ async def use_potions_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("use_potion_"))
 @retry(retry_count=3)
 async def use_potion(callback: CallbackQuery):
+    import logging
+    logger = logging.getLogger(__name__)
+
     potion_id = int(callback.data.split("_")[2])
+    logger.info(f"[POTION] User {callback.from_user.id} trying to use potion_id={potion_id}")
+
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         result = await session.execute(select(Inventory).where(Inventory.id == potion_id, Inventory.user_id == user.id))
         potion = result.scalar_one_or_none()
 
         if not potion:
+            logger.warning(f"[POTION] Potion {potion_id} not found for user {callback.from_user.id}")
             await callback.answer("❌ Зелье не найдено!", show_alert=True)
             return
 
+        logger.info(f"[POTION] Found potion: name='{potion.item_name}', type='{potion.item_type}'")
+
         if potion.item_type != "potion":
+            logger.warning(f"[POTION] Item is not a potion, type={potion.item_type}")
             await callback.answer("❌ Это не зелье!", show_alert=True)
             return
 
         # Apply potion effects
         effect_text = ""
+        logger.info(f"[POTION] Checking potion name: '{potion.item_name.lower()}'")
         if "энергия" in potion.item_name.lower():
             energy_gain = 20
             user = await update_energy(session, user, energy_gain)
             effect_text = f"⚡ +{energy_gain} энергии"
+            logger.info(f"[POTION] Applied energy potion")
         elif "удача" in potion.item_name.lower():
             if not user.active_buffs:
                 user.active_buffs = {}
             user.active_buffs["luck"] = {"type": "luck", "uses": 5}
             effect_text = "🍀 +5 попыток с повышенной удачей"
+            logger.info(f"[POTION] Applied luck potion")
         else:
+            logger.warning(f"[POTION] Unknown potion name: '{potion.item_name}'")
             await callback.answer("❌ Неизвестное зелье!", show_alert=True)
             return
 
