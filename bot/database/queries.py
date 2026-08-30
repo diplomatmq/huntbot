@@ -369,6 +369,18 @@ async def add_coins(session: AsyncSession, user: User, coins: int) -> User:
     return user
 
 
+async def update_location_progress(session: AsyncSession, user: User, location: str, progress_add: float) -> User:
+    """Update progress for a specific location"""
+    if location not in user.location_progress:
+        user.location_progress[location] = 0.0
+
+    user.location_progress[location] = min(100.0, user.location_progress[location] + progress_add)
+    flag_modified(user, "location_progress")
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
 async def get_animals_by_location(session: AsyncSession, location: str) -> list[Animal]:
     result = await session.execute(select(Animal).where(Animal.location == location))
     return result.scalars().all()
