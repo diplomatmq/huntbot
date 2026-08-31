@@ -28,7 +28,7 @@ from bot.keyboards.hunt_kb import (
     get_skip_cooldown_keyboard
 )
 from bot.utils.telegram_api import TelegramBotAPI
-from bot.config import HUNT_COOLDOWN, BOT_TOKEN
+from bot.config import HUNT_COOLDOWN, BOT_TOKEN, BOT_OWNER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +256,11 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         # Animal killed
         logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) KILLED {animal.name}")
         
+        # Check for NFT drop (0.0001 chance = 1 in 10,000)
+        nft_dropped = random.random() < 0.0001
+        if nft_dropped:
+            logger.info(f"[NFT] User {user.telegram_id} (@{user.username}) dropped an NFT!")
+        
         # Generate weight
         weight = round(random.uniform(animal.min_weight, animal.max_weight), 1)
         
@@ -439,6 +444,11 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         if new_location_unlocked:
             unlock_text = f"\n\n🎉 <b>Открыта новая локация: {new_location_unlocked.emoji} {new_location_unlocked.name}!</b>"
         
+        # Build NFT drop text
+        nft_text = ""
+        if nft_dropped:
+            nft_text = f"\n\n🎉 <b>ПОЗДРАВЛЯЕМ! Вы подстрелили NFT!</b>\n\nСкоро вам его передадут!"
+        
         title = f"🎯 <b>{'Гарантированное попадание!' if is_guaranteed else 'Попадание!'}</b>\n\n"
         await message_obj.answer(
             title +
@@ -451,9 +461,34 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
             f"Добыча:\n{drops_text}\n\n"
             f"📍 Локация: {location.emoji} {location.name}{progress_text}\n"
             f"⚡ Энергия: {user.energy}/{user.max_energy}"
-            f"{quest_progress_text}{unlock_text}",
+            f"{quest_progress_text}{unlock_text}{nft_text}",
             reply_to_message_id=reply_to_message_id
         )
+        
+        # Send notification to bot owner if NFT dropped
+        if nft_dropped:
+            try:
+                chat_title = message_obj.chat.title if hasattr(message_obj.chat, 'title') else "личные сообщения"
+                chat_username = f"@{message_obj.chat.username}" if hasattr(message_obj.chat, 'username') and message_obj.chat.username else ""
+                chat_link = f"https://t.me/{chat_username}" if chat_username else "ссылка недоступна"
+                
+                user_mention = f"@{user.username}" if user.username else f"ID: {user.telegram_id}"
+                
+                owner_message = (
+                    f"🎉 <b>NFT DROP!</b>\n\n"
+                    f"👤 Игрок: {user_mention}\n"
+                    f"🆔 ID: {user.telegram_id}\n"
+                    f"💬 Чат: {chat_title}\n"
+                    f"🔗 Ссылка: {chat_link}\n"
+                    f"📍 Локация: {location.emoji} {location.name}\n"
+                    f"🦌 Животное: {animal.emoji} {animal.name}\n"
+                    f"⚖️ Вес: {weight} кг"
+                )
+                
+                await message_obj.bot.send_message(BOT_OWNER_ID, owner_message)
+                logger.info(f"[NFT] Sent notification to bot owner {BOT_OWNER_ID}")
+            except Exception as e:
+                logger.error(f"[NFT] Failed to send notification to bot owner: {e}")
 
         # Send completion messages for completed quests
         for quest in completed_quests:

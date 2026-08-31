@@ -35,8 +35,9 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
         try:
             await session.commit()
             await session.refresh(user)
-            # Add starting ammo for new players
+            # Add starting ammo and coins for new players
             await add_inventory_item(session, user.id, "Стрелы", "ammo", 50, "common")
+            user.coins = 50
             await session.commit()
         except Exception:
             # Handle race condition: another request created the user first
