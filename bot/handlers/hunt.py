@@ -785,6 +785,95 @@ async def cmd_ambush(message: Message):
         )
 
 
+@router.message(lambda msg: msg.text and msg.text.split()[0].lower() == "исследуй")
+async def cmd_explore(message: Message):
+    logger.info(f"[CMD] User {message.from_user.id} (@{message.from_user.username}) used command: {message.text}")
+    async with async_session() as session:
+        user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+        user = await update_energy(session, user)
+        
+        energy_cost = 3
+        if user.energy < energy_cost:
+            await message.answer("❌ Недостаточно энергии! (нужно 3)", reply_to_message_id=message.message_id)
+            return
+        
+        if not await consume_energy(session, user, energy_cost):
+            await message.answer("❌ Недостаточно энергии!", reply_to_message_id=message.message_id)
+            return
+        
+        location = get_location(user.current_location)
+        
+        # Check for explore quests
+        active_quests = await get_active_quests(session, user.id)
+        completed_quests = []
+        quest_progress_text = ""
+        
+        for uq in active_quests:
+            quest = uq.quest
+            if quest.conditions.get("explore"):
+                target_location = quest.conditions["explore"]["location"]
+                required_count = quest.conditions["explore"]["count"]
+                
+                if target_location == user.current_location:
+                    if not uq.progress:
+                        uq.progress = {}
+                    uq.progress["explored"] = uq.progress.get("explored", 0) + 1
+                    flag_modified(uq, "progress")
+                    
+                    current_explored = uq.progress["explored"]
+                    remaining = required_count - current_explored
+                    
+                    if remaining > 0:
+                        quest_progress_text += f"\n📜 Квест: {quest.title}\n   Осталось исследовать: {remaining}\n"
+                    else:
+                        uq.status = "completed"
+                        uq.completed_at = datetime.utcnow()
+                        completed_quests.append(quest)
+                        
+                        user = await add_exp(session, user, quest.reward_exp)
+                        user = await add_coins(session, user, quest.reward_coins)
+                        user.stars += quest.reward_stars
+                        
+                        for reward_item in quest.reward_items:
+                            item_name = reward_item["item"]
+                            quantity = reward_item["quantity"]
+                            await add_inventory_item(session, user.id, item_name, "material", quantity)
+                        
+                        user = await update_location_progress(session, user, quest.location, quest.progress_reward)
+        
+        await session.commit()
+        
+        await message.answer(
+            f"🗺️ <b>Вы исследовали локацию!</b>\n\n"
+            f"{location.emoji} {location.name}\n"
+            f"Вы осмотрели местность и нашли интересные места.\n\n"
+            f"⚡ Энергия: {user.energy}/{user.max_energy}"
+            f"{quest_progress_text}",
+            reply_to_message_id=message.message_id
+        )
+        
+        # Send completion messages for completed quests
+        for quest in completed_quests:
+            mention = ""
+            if user.username:
+                mention = f"@{user.username}"
+            else:
+                mention = f'<a href="tg://user?id={user.telegram_id}">{user.first_name or "Охотник"}</a>'
+            quest_type_label = "📖 СЮЖЕТНЫЙ" if quest.quest_type == "main" else "📋 ПОБОЧНЫЙ"
+            await message.answer(
+                f"🎉 <b>{quest_type_label} КВЕСТ ВЫПОЛНЕН!</b>\n\n"
+                f"👤 {mention}\n\n"
+                f"📜 <b>{quest.title}</b>\n"
+                f"{quest.description}\n\n"
+                f"🎁 Награды получены:\n"
+                f"• +{quest.reward_exp} опыта\n"
+                f"• +{quest.reward_coins} монет\n"
+                f"• +{quest.reward_stars} звёзд"
+                + (f"\n• Прогресс локации +{quest.progress_reward}%" if quest.progress_reward else ""),
+                reply_to_message_id=message.message_id
+            )
+
+
 @router.message(lambda msg: msg.text and msg.text.split()[0].lower() == "отдых")
 async def cmd_rest(message: Message):
     logger.info(f"[CMD] User {message.from_user.id} (@{message.from_user.username}) used command: {message.text}")
