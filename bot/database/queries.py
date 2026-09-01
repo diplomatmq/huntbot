@@ -241,11 +241,12 @@ async def consume_inventory_item(session: AsyncSession, user_id: int, item_name:
     for item in all_items:
         logger.info(f"[CONSUME] User has item: name='{item.item_name}', type='{item.item_type}', quantity={item.quantity}")
 
+    # Try case-insensitive match for ammo items
     result = await session.execute(
         select(Inventory).where(
             and_(
                 Inventory.user_id == user_id,
-                Inventory.item_name == item_name,
+                Inventory.item_name.ilike(item_name),
                 Inventory.item_type == item_type
             )
         )

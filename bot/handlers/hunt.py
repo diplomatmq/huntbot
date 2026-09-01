@@ -145,10 +145,10 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
     ammo_name = None
     if weapon_type in ["bow", "crossbow"]:
         ammo_type = "ammo"
-        ammo_name = "стрелы"
+        ammo_name = "Стрелы"
     elif weapon_type in ["rifle", "shotgun"]:
         ammo_type = "ammo"
-        ammo_name = "патроны"
+        ammo_name = "Патроны"
 
     if ammo_type and ammo_name:
         logger.info(f"[HUNT] User {user.telegram_id} weapon_type={weapon_type}, checking for ammo: name='{ammo_name}', type='{ammo_type}'")
