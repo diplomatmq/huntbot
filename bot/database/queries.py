@@ -251,7 +251,17 @@ async def consume_inventory_item(session: AsyncSession, user_id: int, item_name:
             )
         )
     )
-    item = result.scalar_one_or_none()
+    items = result.scalars().all()
+
+    # If multiple items found (duplicates), use the first one and sum quantities
+    if items:
+        item = items[0]
+        # Sum quantities from all duplicates
+        for duplicate in items[1:]:
+            item.quantity += duplicate.quantity
+            await session.delete(duplicate)
+    else:
+        item = None
 
     logger.info(f"[CONSUME] Found item: {item is not None}")
 
