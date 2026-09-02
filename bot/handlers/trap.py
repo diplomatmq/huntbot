@@ -55,6 +55,12 @@ TRAP_CONFIGS = {
     }
 }
 
+# Upgrade costs (coins)
+TRAP_UPGRADE_COSTS = {
+    1: 15000,  # капкан -> яма
+    2: 30000   # яма -> автоматический капкан
+}
+
 
 async def can_use_trap(user) -> tuple[bool, str]:
     """Check if user can use trap"""
@@ -209,6 +215,11 @@ async def cmd_trap(message: Message):
             await send_trap_results(message, trap_result)
             return
         
+        # Check energy
+        if user.energy < 13:
+            await message.answer("❌ Недостаточно энергии! Нужно 13 энергии для установки ловушки.", reply_to_message_id=message.message_id)
+            return
+        
         # Check if can use trap
         can_use, error_msg = await can_use_trap(user)
         
@@ -252,12 +263,17 @@ async def cmd_trap(message: Message):
         # Activate trap
         config = await activate_trap(user, session)
         
+        if config is None:
+            await message.answer("❌ Недостаточно энергии! Нужно 13 энергии для установки ловушки.", reply_to_message_id=message.message_id)
+            return
+        
         trigger_time = user.trap_set_time + timedelta(minutes=config["trigger_time_min"])
         
         await message.answer(
             f"{config['emoji']} <b>{config['name']} установлена!</b>\n\n"
             f"⏰ Сработает в течение {config['trigger_time_min']} минут\n"
-            f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n\n"
+            f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n"
+            f"⚡ Потрачено энергии: 13\n\n"
             f"💡 Используйте команду <b>ловушка</b> после срабатывания, чтобы получить добычу!",
             reply_to_message_id=message.message_id
         )
@@ -418,13 +434,130 @@ async def handle_trap_payment(message: Message, payload: str, telegram_payment_i
         # Activate trap (skip cooldown)
         config = await activate_trap(user, session)
         
+        if config is None:
+            await message.answer(
+                "❌ Недостаточно энергии для установки ловушки! Нужно 13 энергии.",
+                reply_to_message_id=reply_to_id
+            )
+            return
+        
         trigger_time = user.trap_set_time + timedelta(minutes=config["trigger_time_min"])
         
         await message.answer(
             f"✅ <b>Оплата успешна!</b>\n\n"
             f"{config['emoji']} <b>{config['name']} установлена!</b>\n\n"
             f"⏰ Сработает в течение {config['trigger_time_min']} минут\n"
-            f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n\n"
+            f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n"
+            f"⚡ Потрачено энергии: 13\n\n"
             f"💡 Используйте команду <b>ловушка</b> после срабатывания, чтобы получить добычу!",
             reply_to_message_id=reply_to_id
         )
+
+
+@router.callback_query(F.data.startswith("upgrade_trap_"))
+async def upgrade_trap_callback(callback: CallbackQuery):
+    """Show trap upgrade menu"""
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        current_config = TRAP_CONFIGS[user.trap_level]
+        
+        text = f"🪤 <b>Улучшение ловушки</b>\n\n"
+        text += f"Текущий уровень: {current_config['emoji']} <b>{current_config['name']}</b>\n"
+        text += f"• Ловит: {current_config['animals_min']}-{current_config['animals_max']} животных\n"
+        text += f"• Время: {current_config['trigger_time_min']} минут\n"
+        text += f"• Кулдаун: {current_config['cooldown_hours']} часов\n\n"
+        
+        if user.trap_level >= 3:
+            text += "✅ У вас максимальный уровень ловушки!"
+            from bot.keyboards.inventory_kb import get_inventory_keyboard
+            keyboard = get_inventory_keyboard(callback.from_user.id)
+        else:
+            next_level = user.trap_level + 1
+            next_config = TRAP_CONFIGS[next_level]
+            upgrade_cost = TRAP_UPGRADE_COSTS[user.trap_level]
+            
+            text += f"📈 <b>Следующий уровень:</b> {next_config['emoji']} {next_config['name']}\n"
+            text += f"• Ловит: {next_config['animals_min']}-{next_config['animals_max']} животных\n"
+            text += f"• Время: {next_config['trigger_time_min']} минут\n\n"
+            text += f"💰 Стоимость улучшения: {upgrade_cost} монет\n"
+            text += f"💼 Ваши монеты: {user.coins}"
+            
+            if user.trap_active:
+                text += f"\n\n⚠️ У вас установлена активная ловушка.\nПосле улучшения она сработает на текущем уровне."
+            
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            buttons = []
+            if user.coins >= upgrade_cost:
+                buttons.append([InlineKeyboardButton(
+                    text=f"⬆️ Улучшить за {upgrade_cost} 💰",
+                    callback_data=f"confirm_upgrade_trap_{callback.from_user.id}"
+                )])
+            else:
+                buttons.append([InlineKeyboardButton(
+                    text="❌ Недостаточно монет",
+                    callback_data=f"insufficient_coins_{callback.from_user.id}"
+                )])
+            
+            from bot.keyboards.inventory_kb import get_inventory_keyboard
+            buttons.append([InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=f"inventory_{callback.from_user.id}"
+            )])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard)
+        except Exception as e:
+            pass
+        
+        await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_upgrade_trap_"))
+async def confirm_upgrade_trap(callback: CallbackQuery):
+    """Confirm and process trap upgrade"""
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        if user.trap_level >= 3:
+            await callback.answer("У вас уже максимальный уровень ловушки!", show_alert=True)
+            return
+        
+        upgrade_cost = TRAP_UPGRADE_COSTS[user.trap_level]
+        
+        if user.coins < upgrade_cost:
+            await callback.answer("❌ Недостаточно монет!", show_alert=True)
+            return
+        
+        # Deduct coins and upgrade
+        user.coins -= upgrade_cost
+        old_level = user.trap_level
+        user.trap_level += 1
+        
+        await session.commit()
+        await session.refresh(user)
+        
+        new_config = TRAP_CONFIGS[user.trap_level]
+        
+        text = (
+            f"🎉 <b>Ловушка улучшена!</b>\n\n"
+            f"Новый уровень: {new_config['emoji']} <b>{new_config['name']}</b>\n"
+            f"• Ловит: {new_config['animals_min']}-{new_config['animals_max']} животных\n"
+            f"• Время срабатывания: {new_config['trigger_time_min']} минут\n"
+            f"• Кулдаун: {new_config['cooldown_hours']} часов\n\n"
+            f"💰 Потрачено: {upgrade_cost} монет\n"
+            f"💼 Осталось: {user.coins} монет"
+        )
+        
+        if user.trap_active:
+            old_config = TRAP_CONFIGS[old_level]
+            text += f"\n\n⚠️ Активная ловушка ({old_config['name']}) сработает на старом уровне."
+        
+        from bot.keyboards.inventory_kb import get_inventory_keyboard
+        try:
+            await callback.message.edit_text(text, reply_markup=get_inventory_keyboard(callback.from_user.id))
+        except Exception:
+            pass
+        
+        await callback.answer("✅ Улучшение завершено!")

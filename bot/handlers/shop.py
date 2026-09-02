@@ -65,11 +65,6 @@ async def show_shop_category(callback: CallbackQuery):
             "potions": [
                 {"name": "Зелье энергии", "price": 100, "currency": "coins", "type": "potion_energy"},
                 {"name": "Зелье удачи", "price": 5, "currency": "stars", "type": "potion_luck"},
-            ],
-            "traps": [
-                {"name": "Капкан", "price": 1000, "currency": "coins", "type": "trap_1", "level": 1},
-                {"name": "Яма", "price": 5000, "currency": "coins", "type": "trap_2", "level": 2, "requires": 1},
-                {"name": "Автоматический капкан", "price": 15000, "currency": "coins", "type": "trap_3", "level": 3, "requires": 2},
             ]
         }
 
@@ -79,33 +74,14 @@ async def show_shop_category(callback: CallbackQuery):
             "weapons": "🔫 Оружие",
             "ammo": "💨 Боеприпасы",
             "bait": "🍖 Приманки",
-            "potions": "🧪 Зелья",
-            "traps": "🪤 Ловушки"
+            "potions": "🧪 Зелья"
         }
 
         text = f"{category_names.get(category, '🛒 Магазин')}\n\n"
-        
-        # Special handling for traps - show current level and requirements
-        if category == "traps":
-            text += f"🔧 Текущий уровень ловушки: {user.trap_level}\n\n"
 
         for item in items:
             currency = "💰" if item["currency"] == "coins" else "⭐"
-            
-            # For traps, show additional info
-            if category == "traps":
-                trap_level = item.get("level", 0)
-                requires = item.get("requires", 0)
-                
-                # Check if user can buy this trap
-                if user.trap_level >= trap_level:
-                    text += f"✅ {item['name']} — Куплено\n"
-                elif user.trap_level < requires:
-                    text += f"🔒 {item['name']} — {currency} {item['price']} (Требуется уровень {requires})\n"
-                else:
-                    text += f"• {item['name']} — {currency} {item['price']}\n"
-            else:
-                text += f"• {item['name']} — {currency} {item['price']}\n"
+            text += f"• {item['name']} — {currency} {item['price']}\n"
 
         try:
             await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items))
@@ -175,35 +151,8 @@ async def buy_item(callback: CallbackQuery):
         
         # Add item to inventory or weapons
         is_weapon = any(w in item_name.lower() for w in ["лук", "арбалет", "винтовка", "дробовик"])
-        is_trap = any(t in item_name.lower() for t in ["капкан", "яма", "автоматический"])
         
-        if is_trap:
-            # Determine trap level
-            trap_levels = {
-                "капкан": 1,
-                "яма": 2,
-                "автоматический капкан": 3
-            }
-            trap_level = None
-            for name, level in trap_levels.items():
-                if name in item_name.lower():
-                    trap_level = level
-                    break
-            
-            if trap_level:
-                # Check if user already has this trap level or higher
-                if user.trap_level >= trap_level:
-                    await callback.answer("❌ У вас уже есть эта ловушка или лучше!", show_alert=True)
-                    return
-                
-                # Check if user has previous trap level (for upgrades)
-                if trap_level > 1 and user.trap_level < trap_level - 1:
-                    await callback.answer(f"❌ Сначала купите предыдущий уровень ловушки!", show_alert=True)
-                    return
-                
-                # Upgrade trap
-                user.trap_level = trap_level
-        elif is_weapon:
+        if is_weapon:
             # Determine weapon type
             weapon_types = {
                 "лук": "bow",
