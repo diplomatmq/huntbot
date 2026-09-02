@@ -72,7 +72,7 @@ async def _migrate_species_from_json():
 async def add_missing_columns():
     from bot.database.models import (
         User, Inventory, Weapon, Quest, UserQuest,
-        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies
+        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies, HuntLog
     )
 
     async with engine.connect() as conn:
@@ -91,12 +91,25 @@ async def add_missing_columns():
                         nullable = "NULL" if column.nullable else "NOT NULL"
                         default = ""
                         if column.default is not None:
-                            default = f" DEFAULT {column.default.arg}" if not column.default.is_callable else ""
+                            if hasattr(column.default, 'arg'):
+                                # Handle scalar defaults
+                                if isinstance(column.default.arg, bool):
+                                    default = f" DEFAULT {str(column.default.arg).upper()}"
+                                elif isinstance(column.default.arg, (int, float)):
+                                    default = f" DEFAULT {column.default.arg}"
+                                elif isinstance(column.default.arg, str):
+                                    default = f" DEFAULT '{column.default.arg}'"
+                            elif not column.default.is_callable:
+                                default = ""
 
                         alter_sql = text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type} {nullable}{default}')
-                        sync_conn.execute(alter_sql)
-                        sync_conn.commit()
-                        print(f"Added missing column '{column_name}' to table '{table_name}'")
+                        try:
+                            sync_conn.execute(alter_sql)
+                            sync_conn.commit()
+                            print(f"Added missing column '{column_name}' to table '{table_name}'")
+                        except Exception as e:
+                            print(f"Warning: Could not add column '{column_name}' to '{table_name}': {e}")
+                            sync_conn.rollback()
 
         await conn.run_sync(do_inspect)
 

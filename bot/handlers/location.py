@@ -1,7 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from sqlalchemy import select, and_
 from bot.database.db import async_session
+from bot.database.models import HuntLog
 from bot.database.queries import get_or_create_user, update_energy
 from bot.game_logic.locations import (
     get_location, get_all_locations, get_unlocked_locations, 
@@ -12,6 +14,20 @@ from bot.keyboards.location_kb import get_locations_keyboard
 router = Router()
 
 
+async def get_boss_defeated_locations(session, user_id: int) -> set:
+    """Get set of location IDs where boss (legendary animal) was defeated"""
+    result = await session.execute(
+        select(HuntLog.location).where(
+            and_(
+                HuntLog.user_id == user_id,
+                HuntLog.rarity == "legendary",
+                HuntLog.is_successful == True
+            )
+        ).distinct()
+    )
+    return {row[0] for row in result}
+
+
 @router.callback_query(F.data.startswith("locations_"))
 async def show_locations(callback: CallbackQuery):
     async with async_session() as session:
@@ -19,6 +35,7 @@ async def show_locations(callback: CallbackQuery):
         user = await update_energy(session, user)
 
         unlocked = get_unlocked_locations(user.location_progress, user.game_mode)
+        boss_defeated_locs = await get_boss_defeated_locations(session, user.id)
 
         mode_text = "🆓 Свободный режим" if user.game_mode == "free" else "📖 Сюжетный режим"
         text = f"📍 <b>Локации</b> ({mode_text})\n\n"
@@ -34,16 +51,25 @@ async def show_locations(callback: CallbackQuery):
             progress = user.location_progress.get(loc.id, 0)
             is_current = loc.id == user.current_location
             boss_unlocked = is_boss_unlocked(loc.id, user.location_progress)
+            boss_defeated = loc.id in boss_defeated_locs
 
             status = "📍" if is_current else "🔓"
             
             if user.game_mode == "story":
-                boss_status = "👹 Босс доступен!" if boss_unlocked else f"👹 Босс: {progress}%"
+                # Сначала проверяем, побежден ли босс
+                if boss_defeated:
+                    boss_status = "✅ Босс побеждён"
+                elif boss_unlocked:
+                    boss_status = "👹 Босс доступен!"
+                else:
+                    boss_status = f"👹 Босс: {progress:.1f}%/70%"
+                
                 text += f"{status} {loc.emoji} <b>{loc.name}</b>\n"
-                text += f"   Прогресс: {progress}%\n"
+                text += f"   Прогресс: {progress:.1f}%\n"
                 text += f"   {boss_status}\n\n"
             else:
-                text += f"{status} {loc.emoji} <b>{loc.name}</b>\n"
+                boss_status = " (✅ Босс побеждён)" if boss_defeated else ""
+                text += f"{status} {loc.emoji} <b>{loc.name}</b>{boss_status}\n"
                 text += f"   {loc.description}\n\n"
 
         try:
@@ -80,11 +106,10 @@ async def travel_to_location(callback: CallbackQuery):
         await session.commit()
         
         location = get_location(location_id)
+        unlocked = get_unlocked_locations(user.location_progress, user.game_mode)
+        boss_defeated_locs = await get_boss_defeated_locations(session, user.id)
     
     await callback.answer(f"🚀 Вы переместились в {location.name}!")
-    
-    # Refresh locations view
-    unlocked = get_unlocked_locations(user.location_progress, user.game_mode)
     
     mode_text = "🆓 Свободный режим" if user.game_mode == "free" else "📖 Сюжетный режим"
     text = f"📍 <b>Локации</b> ({mode_text})\n\n"
@@ -100,16 +125,25 @@ async def travel_to_location(callback: CallbackQuery):
         progress = user.location_progress.get(loc.id, 0)
         is_current = loc.id == user.current_location
         boss_unlocked = is_boss_unlocked(loc.id, user.location_progress)
+        boss_defeated = loc.id in boss_defeated_locs
         
         status = "📍" if is_current else "🔓"
         
         if user.game_mode == "story":
-            boss_status = "👹 Босс доступен!" if boss_unlocked else f"👹 Босс: {progress}%"
+            # Сначала проверяем, побежден ли босс
+            if boss_defeated:
+                boss_status = "✅ Босс побеждён"
+            elif boss_unlocked:
+                boss_status = "👹 Босс доступен!"
+            else:
+                boss_status = f"👹 Босс: {progress:.1f}%/70%"
+            
             text += f"{status} {loc.emoji} <b>{loc.name}</b>\n"
-            text += f"   Прогресс: {progress}%\n"
+            text += f"   Прогресс: {progress:.1f}%\n"
             text += f"   {boss_status}\n\n"
         else:
-            text += f"{status} {loc.emoji} <b>{loc.name}</b>\n"
+            boss_status = " (✅ Босс побеждён)" if boss_defeated else ""
+            text += f"{status} {loc.emoji} <b>{loc.name}</b>{boss_status}\n"
             text += f"   {loc.description}\n\n"
     
     try:

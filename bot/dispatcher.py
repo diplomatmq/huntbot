@@ -4,7 +4,7 @@ from aiogram import Dispatcher
 from aiogram.exceptions import TelegramRetryAfter
 from bot.middleware.energy import EnergyMiddleware
 from bot.middleware.callback_protection import CallbackProtectionMiddleware
-from bot.handlers import common, hunt, shop, inventory, location, quest, profile, admin
+from bot.handlers import common, hunt, shop, inventory, location, quest, profile, admin, trap
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ async def get_dispatcher() -> Dispatcher:
     
     dp.include_router(common.router)
     dp.include_router(hunt.router)
+    dp.include_router(trap.router)
     dp.include_router(shop.router)
     dp.include_router(inventory.router)
     dp.include_router(location.router)

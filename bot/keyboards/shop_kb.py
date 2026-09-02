@@ -12,6 +12,9 @@ def get_shop_keyboard(user_id: int):
             InlineKeyboardButton(text="🧪 Зелья", callback_data=f"shop_category_potions_{user_id}")
         ],
         [
+            InlineKeyboardButton(text="🪤 Ловушки", callback_data=f"shop_category_traps_{user_id}")
+        ],
+        [
             InlineKeyboardButton(text="🏠 Меню", callback_data=f"menu_{user_id}")
         ]
     ]

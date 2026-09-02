@@ -43,6 +43,12 @@ class User(Base):
     # Track uses counter (to prevent spamming "след" command)
     track_uses = Column(Integer, default=0)
     
+    # Trap system
+    trap_level = Column(Integer, default=0)  # 0=none, 1=trap, 2=pit, 3=auto_trap
+    trap_active = Column(Boolean, default=False)
+    trap_set_time = Column(DateTime, nullable=True)
+    last_trap_time = Column(DateTime, nullable=True)  # For cooldown
+    
     # Statistics - Free Mode
     total_hunts_free = Column(Integer, default=0)
     successful_hunts_free = Column(Integer, default=0)
