@@ -58,9 +58,6 @@ TRAP_CONFIGS = {
 
 async def can_use_trap(user) -> tuple[bool, str]:
     """Check if user can use trap"""
-    if user.trap_level == 0:
-        return False, "❌ У вас нет ловушки! Купите её в магазине."
-    
     if user.trap_active:
         return False, "❌ У вас уже установлена ловушка!"
     
@@ -80,6 +77,11 @@ async def can_use_trap(user) -> tuple[bool, str]:
 
 async def activate_trap(user, session):
     """Activate user's trap"""
+    # Consume energy
+    from bot.database.queries import consume_energy
+    if not await consume_energy(session, user, 13):
+        return None
+    
     config = TRAP_CONFIGS[user.trap_level]
     
     # Set trap as active
