@@ -64,6 +64,10 @@ TRAP_UPGRADE_COSTS = {
 
 async def can_use_trap(user) -> tuple[bool, str]:
     """Check if user can use trap"""
+    # Fix old users with trap_level=0
+    if user.trap_level == 0:
+        user.trap_level = 1
+    
     if user.trap_active:
         return False, "❌ У вас уже установлена ловушка!"
     
@@ -83,6 +87,12 @@ async def can_use_trap(user) -> tuple[bool, str]:
 
 async def activate_trap(user, session):
     """Activate user's trap"""
+    # Fix old users with trap_level=0
+    if user.trap_level == 0:
+        user.trap_level = 1
+        await session.commit()
+        await session.refresh(user)
+    
     # Consume energy
     from bot.database.queries import consume_energy
     if not await consume_energy(session, user, 13):
@@ -104,6 +114,12 @@ async def check_and_trigger_trap(user, session):
     """Check if trap should trigger and process the catch"""
     if not user.trap_active or not user.trap_set_time:
         return None
+    
+    # Fix old users with trap_level=0
+    if user.trap_level == 0:
+        user.trap_level = 1
+        await session.commit()
+        await session.refresh(user)
     
     config = TRAP_CONFIGS[user.trap_level]
     trigger_time = user.trap_set_time + timedelta(minutes=config["trigger_time_min"])
@@ -207,6 +223,12 @@ async def cmd_trap(message: Message):
     async with async_session() as session:
         user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
         user = await update_energy(session, user)
+        
+        # Fix old users with trap_level=0
+        if user.trap_level == 0:
+            user.trap_level = 1
+            await session.commit()
+            await session.refresh(user)
         
         # Check if trap can trigger first
         trap_result = await check_and_trigger_trap(user, session)
@@ -457,8 +479,20 @@ async def handle_trap_payment(message: Message, payload: str, telegram_payment_i
 @router.callback_query(F.data.startswith("upgrade_trap_"))
 async def upgrade_trap_callback(callback: CallbackQuery):
     """Show trap upgrade menu"""
+    # Check user_id protection
+    user_id_from_callback = int(callback.data.split("_")[-1])
+    if callback.from_user.id != user_id_from_callback:
+        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
+        return
+    
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Fix old users with trap_level=0
+        if user.trap_level == 0:
+            user.trap_level = 1
+            await session.commit()
+            await session.refresh(user)
         
         current_config = TRAP_CONFIGS[user.trap_level]
         
@@ -514,9 +548,27 @@ async def upgrade_trap_callback(callback: CallbackQuery):
         await callback.answer()
 
 
+@router.callback_query(F.data.startswith("insufficient_coins_"))
+async def insufficient_coins_alert(callback: CallbackQuery):
+    """Show alert when user doesn't have enough coins"""
+    # Check user_id protection
+    user_id_from_callback = int(callback.data.split("_")[-1])
+    if callback.from_user.id != user_id_from_callback:
+        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
+        return
+    
+    await callback.answer("❌ Недостаточно монет для улучшения!", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("confirm_upgrade_trap_"))
 async def confirm_upgrade_trap(callback: CallbackQuery):
     """Confirm and process trap upgrade"""
+    # Check user_id protection
+    user_id_from_callback = int(callback.data.split("_")[-1])
+    if callback.from_user.id != user_id_from_callback:
+        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
+        return
+    
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         
