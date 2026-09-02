@@ -230,12 +230,25 @@ async def cmd_trap(message: Message):
             await session.commit()
             await session.refresh(user)
         
-        # Check if trap can trigger first
-        trap_result = await check_and_trigger_trap(user, session)
-        if trap_result:
-            # Trap triggered! Send results
-            await send_trap_results(message, trap_result)
-            return
+        # Check if trap is already active
+        if user.trap_active:
+            config = TRAP_CONFIGS[user.trap_level]
+            if user.trap_set_time:
+                trigger_time = user.trap_set_time + timedelta(minutes=config["trigger_time_min"])
+                now = datetime.utcnow()
+                remaining = trigger_time - now
+                
+                if remaining.total_seconds() > 0:
+                    minutes = int(remaining.total_seconds() // 60)
+                    seconds = int(remaining.total_seconds() % 60)
+                    await message.answer(
+                        f"⏳ <b>Ловушка уже установлена!</b>\n\n"
+                        f"{config['emoji']} {config['name']}\n"
+                        f"⏰ Сработает через: ~{minutes} мин {seconds} сек\n\n"
+                        f"💡 Когда ловушка сработает, вы получите уведомление автоматически!",
+                        reply_to_message_id=message.message_id
+                    )
+                    return
         
         # Check energy
         if user.energy < 13:
@@ -289,14 +302,12 @@ async def cmd_trap(message: Message):
             await message.answer("❌ Недостаточно энергии! Нужно 13 энергии для установки ловушки.", reply_to_message_id=message.message_id)
             return
         
-        trigger_time = user.trap_set_time + timedelta(minutes=config["trigger_time_min"])
-        
         await message.answer(
             f"{config['emoji']} <b>{config['name']} установлена!</b>\n\n"
             f"⏰ Сработает в течение {config['trigger_time_min']} минут\n"
             f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n"
             f"⚡ Потрачено энергии: 13\n\n"
-            f"💡 Используйте команду <b>ловушка</b> после срабатывания, чтобы получить добычу!",
+            f"💡 Когда ловушка сработает, вы получите уведомление автоматически!",
             reply_to_message_id=message.message_id
         )
 
