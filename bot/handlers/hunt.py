@@ -346,6 +346,12 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
 
                             user = await update_location_progress(session, user, quest.location, quest.progress_reward)
 
+                            # Add boss defeat message if this is a boss quest
+                            if getattr(quest, 'is_boss_quest', False):
+                                boss_name = getattr(quest, 'boss_name', 'Босс')
+                                quest_progress_text += f"\n\n👑 <b>БОСС ПОБЕЖДЁН!</b>\n"
+                                quest_progress_text += f"🏆 Вы одолели {boss_name}!"
+
                 if quest.conditions.get("collect") and drops:
                     target_item = quest.conditions["collect"]["item"]
                     required_count = quest.conditions["collect"]["count"]
@@ -389,7 +395,13 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         progress_add = 0.5 if user.game_mode == "free" else 1.0  # Story mode gives more progress
         user = await update_location_progress(session, user, user.current_location, progress_add)
         new_progress = user.location_progress.get(user.current_location, 0)
-        
+
+        # Check if boss defeated in story mode (legendary animal killed)
+        boss_defeated_text = ""
+        if user.game_mode == "story" and animal.rarity == "legendary":
+            boss_defeated_text = f"\n\n👑 <b>БОСС ПОБЕЖДЁН!</b>\n"
+            boss_defeated_text += f"🏆 Вы одолели {animal.emoji} {animal.name}!"
+
         # Check if new location unlocked in story mode
         new_location_unlocked = None
         if user.game_mode == "story":
@@ -448,7 +460,13 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
         nft_text = ""
         if nft_dropped:
             nft_text = f"\n\n🎉 <b>ПОЗДРАВЛЯЕМ! Вы подстрелили NFT!</b>\n\nСкоро вам его передадут!"
-        
+
+        # Build legendary/boss defeat text
+        legendary_text = ""
+        if animal.rarity == "legendary":
+            legendary_text = f"\n\n👑 <b>ЛЕГЕНДАРНОЕ ЖИВОТНОЕ ПОБЕЖДЕНО!</b>\n"
+            legendary_text += f"🏆 Вы одолели {animal.emoji} {animal.name}!"
+
         title = f"🎯 <b>{'Гарантированное попадание!' if is_guaranteed else 'Попадание!'}</b>\n\n"
         await message_obj.answer(
             title +
@@ -461,7 +479,7 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
             f"Добыча:\n{drops_text}\n\n"
             f"📍 Локация: {location.emoji} {location.name}{progress_text}\n"
             f"⚡ Энергия: {user.energy}/{user.max_energy}"
-            f"{quest_progress_text}{unlock_text}{nft_text}",
+            f"{quest_progress_text}{unlock_text}{nft_text}{legendary_text}{boss_defeated_text}",
             reply_to_message_id=reply_to_message_id
         )
         
