@@ -75,6 +75,7 @@ async def send_trap_results_to_user(bot: Bot, telegram_id: int, trap_result: dic
     all_drops = trap_result["all_drops"]
     location = trap_result["location"]
     user = trap_result["user"]
+    completed_quests = trap_result.get("completed_quests", [])
     
     rarity_emoji = {
         "common": "⚪",
@@ -124,11 +125,47 @@ async def send_trap_results_to_user(bot: Bot, telegram_id: int, trap_result: dic
         # Send to chat where trap was set, or DM if not available
         target_chat_id = chat_id if chat_id else telegram_id
         await bot.send_message(target_chat_id, text, reply_to_message_id=message_id)
+        
+        # Send completed quest notifications
+        for quest in completed_quests:
+            quest_type_label = "📖 СЮЖЕТНЫЙ" if quest.quest_type == "main" else "📋 ПОБОЧНЫЙ"
+            quest_text = (
+                f"🎉 <b>{quest_type_label} КВЕСТ ВЫПОЛНЕН!</b>\n\n"
+                f"📜 <b>{quest.title}</b>\n"
+                f"{quest.description}\n\n"
+                f"🎁 Награды получены:\n"
+                f"• +{quest.reward_exp} опыта\n"
+                f"• +{quest.reward_coins} монет\n"
+                f"• +{quest.reward_stars} звёзд"
+            )
+            if quest.progress_reward:
+                quest_text += f"\n• Прогресс локации +{quest.progress_reward}%"
+            
+            await bot.send_message(target_chat_id, quest_text, reply_to_message_id=message_id)
+            
     except Exception as e:
         logger.error(f"[TRAP_CHECKER] Failed to send message to chat {chat_id}, trying DM: {e}")
         try:
             # Fallback to DM
             await bot.send_message(telegram_id, text)
+            
+            # Send completed quest notifications to DM
+            for quest in completed_quests:
+                quest_type_label = "📖 СЮЖЕТНЫЙ" if quest.quest_type == "main" else "📋 ПОБОЧНЫЙ"
+                quest_text = (
+                    f"🎉 <b>{quest_type_label} КВЕСТ ВЫПОЛНЕН!</b>\n\n"
+                    f"📜 <b>{quest.title}</b>\n"
+                    f"{quest.description}\n\n"
+                    f"🎁 Награды получены:\n"
+                    f"• +{quest.reward_exp} опыта\n"
+                    f"• +{quest.reward_coins} монет\n"
+                    f"• +{quest.reward_stars} звёзд"
+                )
+                if quest.progress_reward:
+                    quest_text += f"\n• Прогресс локации +{quest.progress_reward}%"
+                
+                await bot.send_message(telegram_id, quest_text)
+                
         except Exception as e2:
             logger.error(f"[TRAP_CHECKER] Failed to send message to {telegram_id}: {e2}")
 

@@ -218,7 +218,8 @@ async def trigger_trap_catch(user, session, config):
     progress_add = 0.5 * num_animals if user.game_mode == "free" else 1.0 * num_animals
     user = await update_location_progress(session, user, user.current_location, progress_add)
     
-    # Update quest progress in story mode
+    # Update quest progress in story mode and check for completion
+    completed_quests = []
     if user.game_mode == "story":
         from bot.database.queries import get_active_quests
         from bot.handlers.hunt import _animal_name_matches, _item_name_matches
@@ -233,6 +234,7 @@ async def trigger_trap_catch(user, session, config):
                 target_animal = quest.conditions["kill"]["animal"]
                 required_count = quest.conditions["kill"]["count"]
                 
+                kills_added = 0
                 for animal_name, data in quest_progress_updates.items():
                     if _animal_name_matches(animal_name, target_animal):
                         # Check if boss quest needs progress check
@@ -243,19 +245,42 @@ async def trigger_trap_catch(user, session, config):
                             # Skip boss quest if progress < 70%
                             continue
                         
-                        if not uq.progress:
-                            uq.progress = {}
-                        uq.progress["killed"] = uq.progress.get("killed", 0) + data["count"]
-                        flag_modified(uq, "progress")
+                        kills_added += data["count"]
+                
+                # Update progress once for this quest
+                if kills_added > 0:
+                    if not uq.progress:
+                        uq.progress = {}
+                    uq.progress["killed"] = uq.progress.get("killed", 0) + kills_added
+                    flag_modified(uq, "progress")
+                    
+                    # Check if quest is completed (only add to completed_quests once)
+                    if uq.progress["killed"] >= required_count and uq.status != "completed":
+                        uq.status = "completed"
+                        uq.completed_at = datetime.utcnow()
+                        completed_quests.append(quest)
+                        
+                        # Add rewards
+                        user = await add_exp(session, user, quest.reward_exp)
+                        user = await add_coins(session, user, quest.reward_coins)
+                        user.stars += quest.reward_stars
+                        
+                        for reward_item in quest.reward_items:
+                            item_name = reward_item["item"]
+                            quantity = reward_item["quantity"]
+                            await add_inventory_item(session, user.id, item_name, "material", quantity)
+                        
+                        user = await update_location_progress(session, user, quest.location, quest.progress_reward)
             
             # Check collect quests - match item to animal source
             if quest.conditions.get("collect"):
                 target_item = quest.conditions["collect"]["item"]
                 required_count = quest.conditions["collect"]["count"]
                 
+                items_collected = 0
                 for animal_name, data in quest_progress_updates.items():
                     # Check if this quest requires a specific animal
-                    if quest.conditions["kill"]:
+                    if quest.conditions.get("kill"):
                         quest_animal = quest.conditions["kill"]["animal"]
                         if not _animal_name_matches(animal_name, quest_animal):
                             # Wrong animal, skip drops
@@ -264,10 +289,32 @@ async def trigger_trap_catch(user, session, config):
                     # Count matching drops from this animal
                     for drop_name, drop_qty in data["drops"].items():
                         if _item_name_matches(drop_name, target_item):
-                            if not uq.progress:
-                                uq.progress = {}
-                            uq.progress["collected"] = uq.progress.get("collected", 0) + drop_qty
-                            flag_modified(uq, "progress")
+                            items_collected += drop_qty
+                
+                # Update progress once for this quest
+                if items_collected > 0:
+                    if not uq.progress:
+                        uq.progress = {}
+                    uq.progress["collected"] = uq.progress.get("collected", 0) + items_collected
+                    flag_modified(uq, "progress")
+                    
+                    # Check if quest is completed (only add to completed_quests once)
+                    if uq.progress["collected"] >= required_count and uq.status != "completed":
+                        uq.status = "completed"
+                        uq.completed_at = datetime.utcnow()
+                        completed_quests.append(quest)
+                        
+                        # Add rewards
+                        user = await add_exp(session, user, quest.reward_exp)
+                        user = await add_coins(session, user, quest.reward_coins)
+                        user.stars += quest.reward_stars
+                        
+                        for reward_item in quest.reward_items:
+                            item_name = reward_item["item"]
+                            quantity = reward_item["quantity"]
+                            await add_inventory_item(session, user.id, item_name, "material", quantity)
+                        
+                        user = await update_location_progress(session, user, quest.location, quest.progress_reward)
     
     await session.commit()
     await session.refresh(user)
@@ -279,7 +326,8 @@ async def trigger_trap_catch(user, session, config):
         "total_coins": total_coins,
         "all_drops": all_drops,
         "location": location,
-        "user": user
+        "user": user,
+        "completed_quests": completed_quests
     }
 
 
