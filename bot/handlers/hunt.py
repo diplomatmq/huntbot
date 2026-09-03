@@ -320,6 +320,10 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                     target_animal = quest.conditions["kill"]["animal"]
                     required_count = quest.conditions["kill"]["count"]
                     if _animal_name_matches(animal.name, target_animal):
+                        # Check if this is a boss quest and progress requirement
+                        is_boss = getattr(quest, 'is_boss_quest', False)
+                        current_progress = user.location_progress.get(quest.location, 0)
+                        
                         if not uq.progress:
                             uq.progress = {}
                         uq.progress["killed"] = uq.progress.get("killed", 0) + 1
@@ -331,26 +335,34 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                         if remaining > 0:
                             quest_progress_text += f"\n📜 Квест: {quest.title}\n   Осталось словить: {remaining} {target_animal}\n"
                         else:
-                            uq.status = "completed"
-                            uq.completed_at = datetime.utcnow()
-                            completed_quests.append(quest)
+                            # For boss quests, check if progress >= 70% before completing
+                            if is_boss and current_progress < 70:
+                                # Kill is counted but quest not completed yet
+                                quest_progress_text += f"\n⚠️ <b>Квест: {quest.title}</b>\n"
+                                quest_progress_text += f"   Животное убито, но босс не побеждён!\n"
+                                quest_progress_text += f"   Требуется 70% прогресса в локации (сейчас: {current_progress:.1f}%)\n"
+                            else:
+                                # Complete the quest
+                                uq.status = "completed"
+                                uq.completed_at = datetime.utcnow()
+                                completed_quests.append(quest)
 
-                            user = await add_exp(session, user, quest.reward_exp)
-                            user = await add_coins(session, user, quest.reward_coins)
-                            user.stars += quest.reward_stars
+                                user = await add_exp(session, user, quest.reward_exp)
+                                user = await add_coins(session, user, quest.reward_coins)
+                                user.stars += quest.reward_stars
 
-                            for reward_item in quest.reward_items:
-                                item_name = reward_item["item"]
-                                quantity = reward_item["quantity"]
-                                await add_inventory_item(session, user.id, item_name, "material", quantity)
+                                for reward_item in quest.reward_items:
+                                    item_name = reward_item["item"]
+                                    quantity = reward_item["quantity"]
+                                    await add_inventory_item(session, user.id, item_name, "material", quantity)
 
-                            user = await update_location_progress(session, user, quest.location, quest.progress_reward)
+                                user = await update_location_progress(session, user, quest.location, quest.progress_reward)
 
-                            # Add boss defeat message if this is a boss quest
-                            if getattr(quest, 'is_boss_quest', False):
-                                boss_name = getattr(quest, 'boss_name', 'Босс')
-                                quest_progress_text += f"\n\n👑 <b>БОСС ПОБЕЖДЁН!</b>\n"
-                                quest_progress_text += f"🏆 Вы одолели {boss_name}!"
+                                # Add boss defeat message if this is a boss quest
+                                if is_boss:
+                                    boss_name = getattr(quest, 'boss_name', 'Босс')
+                                    quest_progress_text += f"\n\n👑 <b>БОСС ПОБЕЖДЁН!</b>\n"
+                                    quest_progress_text += f"🏆 Вы одолели {boss_name}!"
 
                 if quest.conditions.get("collect") and drops:
                     target_item = quest.conditions["collect"]["item"]

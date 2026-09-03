@@ -49,6 +49,8 @@ def _label_for_quest(q: Quest, uq: UserQuest | None) -> str:
             status_icon = "🔥 "
         elif uq.status == "completed":
             status_icon = "✅ "
+        elif uq.status == "paused":
+            status_icon = "⏸️ "
         if q.conditions.get("kill"):
             need = q.conditions["kill"]["count"]
             cur = uq.progress.get("killed", 0) if uq.progress else 0
@@ -88,6 +90,25 @@ async def _collect_all_quest_display(session, user):
         for uq in active_uqs
     ]
 
+    # Get paused quests
+    paused_result = await session.execute(
+        select(UserQuest).where(
+            UserQuest.user_id == user.id,
+            UserQuest.status == "paused"
+        )
+    )
+    paused_uqs = paused_result.scalars().all()
+    
+    # Need to load quest relationship
+    for puq in paused_uqs:
+        quest_res = await session.execute(select(Quest).where(Quest.id == puq.quest_id))
+        puq.quest = quest_res.scalar_one_or_none()
+    
+    paused_pairs = [
+        (uq.quest.id, _label_for_quest(uq.quest, uq), "paused", uq)
+        for uq in paused_uqs if uq.quest
+    ]
+
     unlocked_locs = get_unlocked_locations(user.location_progress, "story")
     unlocked_ids = [loc.id for loc in unlocked_locs]
     available_quests = await get_available_quests(
@@ -98,7 +119,7 @@ async def _collect_all_quest_display(session, user):
         for q in available_quests
     ]
 
-    return active_pairs, available_pairs
+    return active_pairs, paused_pairs, available_pairs
 
 
 async def _render_all_quests(callback: CallbackQuery, page: int = 1):
@@ -110,11 +131,13 @@ async def _render_all_quests(callback: CallbackQuery, page: int = 1):
             await callback.answer("❌ Квесты доступны только в сюжетном режиме!", show_alert=True)
             return
 
-        active_pairs, available_pairs = await _collect_all_quest_display(session, user)
+        active_pairs, paused_pairs, available_pairs = await _collect_all_quest_display(session, user)
 
     combined = []
     for qid, label, section, uq in active_pairs:
         combined.append((qid, label, "active", uq))
+    for qid, label, section, uq in paused_pairs:
+        combined.append((qid, label, "paused", uq))
     for qid, label, section, uq in available_pairs:
         combined.append((qid, label, "available", uq))
 
@@ -128,12 +151,17 @@ async def _render_all_quests(callback: CallbackQuery, page: int = 1):
     page_slice = combined[start:start + QUESTS_PER_PAGE]
 
     active_count = len(active_pairs)
+    paused_count = len(paused_pairs)
     available_count = len(available_pairs)
 
     header = (
         f"📜 <b>Квесты</b> (Сюжетный режим, стр. {page}/{total_pages})\n\n"
-        f"🔥 Активных: <b>{active_count}</b>   📋 Доступных: <b>{available_count}</b>\n\n"
+        f"🔥 Активных: <b>{active_count}</b>"
     )
+    if paused_count > 0:
+        header += f"   ⏸️ На паузе: <b>{paused_count}</b>"
+    header += f"   📋 Доступных: <b>{available_count}</b>\n\n"
+    
     if not combined:
         text = header + "Нет квестов. Выполняйте охоту и получайте новые уровни, чтобы открыть больше заданий!"
         display_for_kb = []
@@ -331,6 +359,8 @@ async def quest_detail(callback: CallbackQuery):
         status = "🔥 В работе"
     elif uq and uq.status == "completed":
         status = "✅ Завершён"
+    elif uq and uq.status == "paused":
+        status = "⏸️ На паузе (прогресс сохранён)"
     else:
         status = "📋 Доступен"
 
@@ -348,11 +378,14 @@ async def quest_detail(callback: CallbackQuery):
     text = header + description + condition + reward
 
     can_take = True
-    is_taken = uq is not None and uq.status in {"active", "completed"}
+    is_taken = uq is not None and uq.status in {"active", "completed", "paused"}
     if uq and uq.status == "active":
         can_take = False
     if uq and uq.status == "completed" and not getattr(quest, "is_repeatable", False):
         can_take = False
+    # Paused quests can be resumed (taken again)
+    if uq and uq.status == "paused":
+        can_take = True
 
     try:
         await callback.message.edit_text(
@@ -413,6 +446,55 @@ async def take_quest(callback: CallbackQuery):
         if result.scalar_one_or_none():
             await callback.answer("❌ Квест уже взят!", show_alert=True)
             await _render_overview(callback)
+            return
+
+        # Check if there's a paused quest for this quest_id
+        paused_result = await session.execute(
+            select(UserQuest).where(
+                UserQuest.user_id == user.id,
+                UserQuest.quest_id == quest_id,
+                UserQuest.status == "paused",
+            )
+        )
+        paused_uq = paused_result.scalar_one_or_none()
+
+        # Check quest limits
+        active_quests_result = await session.execute(
+            select(UserQuest).where(
+                UserQuest.user_id == user.id,
+                UserQuest.status == "active"
+            )
+        )
+        active_user_quests = active_quests_result.scalars().all()
+        
+        # Count main and side quests
+        main_count = 0
+        side_count = 0
+        for uq in active_user_quests:
+            quest_res = await session.execute(select(Quest).where(Quest.id == uq.quest_id))
+            q = quest_res.scalar_one_or_none()
+            if q:
+                if q.quest_type == "main":
+                    main_count += 1
+                else:
+                    side_count += 1
+        
+        # Check limits
+        if quest.quest_type == "main":
+            if main_count >= 1:
+                await callback.answer("❌ У вас уже есть активный сюжетный квест! Завершите его перед тем, как взять новый.", show_alert=True)
+                return
+        else:  # side quest
+            if side_count >= 2:
+                await callback.answer("❌ У вас уже есть 2 активных побочных квеста! Завершите один перед тем, как взять новый.", show_alert=True)
+                return
+
+        # If there's a paused quest, resume it
+        if paused_uq:
+            paused_uq.status = "active"
+            await session.commit()
+            await callback.answer(f"▶️ Квест «{quest.title}» возобновлён! Прогресс сохранён.")
+            await show_quest_list(callback)
             return
 
         # For repeatable quests, check if there's a completed one and reset it
