@@ -85,7 +85,7 @@ async def can_use_trap(user) -> tuple[bool, str]:
     return True, ""
 
 
-async def activate_trap(user, session):
+async def activate_trap(user, session, chat_id=None, message_id=None):
     """Activate user's trap"""
     # Fix old users with trap_level=0
     if user.trap_level == 0:
@@ -103,6 +103,8 @@ async def activate_trap(user, session):
     # Set trap as active
     user.trap_active = True
     user.trap_set_time = datetime.utcnow()
+    user.trap_chat_id = chat_id
+    user.trap_message_id = message_id
     
     await session.commit()
     await session.refresh(user)
@@ -147,6 +149,9 @@ async def trigger_trap_catch(user, session, config):
     total_coins = 0
     all_drops = {}
     
+    # Track quest progress
+    quest_progress_updates = {}
+    
     for i in range(num_animals):
         # Select random animal from current location
         animal = select_random_animal(user.current_location, track_buff=False, bait_type=None)
@@ -185,6 +190,18 @@ async def trigger_trap_catch(user, session, config):
             animal.rarity, weight, exp, coins, drops, True, user.game_mode
         )
         
+        # Track for quest progress (store animal name and drops with animal source)
+        if animal.name not in quest_progress_updates:
+            quest_progress_updates[animal.name] = {
+                "count": 0,
+                "drops": {}
+            }
+        quest_progress_updates[animal.name]["count"] += 1
+        for drop_name, drop_qty in drops.items():
+            if drop_name not in quest_progress_updates[animal.name]["drops"]:
+                quest_progress_updates[animal.name]["drops"][drop_name] = 0
+            quest_progress_updates[animal.name]["drops"][drop_name] += drop_qty
+        
         caught_animals.append({
             "animal": animal,
             "weight": weight,
@@ -200,6 +217,57 @@ async def trigger_trap_catch(user, session, config):
     # Update location progress
     progress_add = 0.5 * num_animals if user.game_mode == "free" else 1.0 * num_animals
     user = await update_location_progress(session, user, user.current_location, progress_add)
+    
+    # Update quest progress in story mode
+    if user.game_mode == "story":
+        from bot.database.queries import get_active_quests
+        from bot.handlers.hunt import _animal_name_matches, _item_name_matches
+        
+        active_quests = await get_active_quests(session, user.id)
+        
+        for uq in active_quests:
+            quest = uq.quest
+            
+            # Check kill quests
+            if quest.conditions.get("kill"):
+                target_animal = quest.conditions["kill"]["animal"]
+                required_count = quest.conditions["kill"]["count"]
+                
+                for animal_name, data in quest_progress_updates.items():
+                    if _animal_name_matches(animal_name, target_animal):
+                        # Check if boss quest needs progress check
+                        is_boss = getattr(quest, 'is_boss_quest', False)
+                        current_progress = user.location_progress.get(quest.location, 0)
+                        
+                        if is_boss and current_progress < 70:
+                            # Skip boss quest if progress < 70%
+                            continue
+                        
+                        if not uq.progress:
+                            uq.progress = {}
+                        uq.progress["killed"] = uq.progress.get("killed", 0) + data["count"]
+                        flag_modified(uq, "progress")
+            
+            # Check collect quests - match item to animal source
+            if quest.conditions.get("collect"):
+                target_item = quest.conditions["collect"]["item"]
+                required_count = quest.conditions["collect"]["count"]
+                
+                for animal_name, data in quest_progress_updates.items():
+                    # Check if this quest requires a specific animal
+                    if quest.conditions["kill"]:
+                        quest_animal = quest.conditions["kill"]["animal"]
+                        if not _animal_name_matches(animal_name, quest_animal):
+                            # Wrong animal, skip drops
+                            continue
+                    
+                    # Count matching drops from this animal
+                    for drop_name, drop_qty in data["drops"].items():
+                        if _item_name_matches(drop_name, target_item):
+                            if not uq.progress:
+                                uq.progress = {}
+                            uq.progress["collected"] = uq.progress.get("collected", 0) + drop_qty
+                            flag_modified(uq, "progress")
     
     await session.commit()
     await session.refresh(user)
@@ -296,7 +364,7 @@ async def cmd_trap(message: Message):
             return
         
         # Activate trap
-        config = await activate_trap(user, session)
+        config = await activate_trap(user, session, chat_id=message.chat.id, message_id=message.message_id)
         
         if config is None:
             await message.answer("❌ Недостаточно энергии! Нужно 13 энергии для установки ловушки.", reply_to_message_id=message.message_id)
@@ -465,7 +533,7 @@ async def handle_trap_payment(message: Message, payload: str, telegram_payment_i
             )
         
         # Activate trap (skip cooldown)
-        config = await activate_trap(user, session)
+        config = await activate_trap(user, session, chat_id=transaction.chat_id if transaction else None, message_id=reply_to_id)
         
         if config is None:
             await message.answer(

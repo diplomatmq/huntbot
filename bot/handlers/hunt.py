@@ -367,6 +367,15 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                 if quest.conditions.get("collect") and drops:
                     target_item = quest.conditions["collect"]["item"]
                     required_count = quest.conditions["collect"]["count"]
+                    
+                    # Check if quest also requires specific animal
+                    quest_requires_animal = quest.conditions.get("kill")
+                    if quest_requires_animal:
+                        quest_animal = quest_requires_animal["animal"]
+                        # Only count drops if animal matches
+                        if not _animal_name_matches(animal.name, quest_animal):
+                            continue  # Skip this quest, animal doesn't match
+                    
                     collected_now = 0
                     for drop_name, drop_qty in drops.items():
                         if _item_name_matches(drop_name, target_item):

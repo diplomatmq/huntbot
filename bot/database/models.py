@@ -47,6 +47,8 @@ class User(Base):
     trap_level = Column(Integer, default=1)  # 1=trap, 2=pit, 3=auto_trap (default 1)
     trap_active = Column(Boolean, default=False)
     trap_set_time = Column(DateTime, nullable=True)
+    trap_chat_id = Column(BigInteger, nullable=True)  # Chat where trap was set
+    trap_message_id = Column(BigInteger, nullable=True)  # Message to reply to
     last_trap_time = Column(DateTime, nullable=True)  # For cooldown
     
     # Statistics - Free Mode

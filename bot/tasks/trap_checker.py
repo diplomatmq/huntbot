@@ -50,15 +50,21 @@ async def check_active_traps(bot: Bot):
                     trap_result = await trigger_trap_catch(user, session, config)
                     
                     if trap_result:
-                        # Send results to user
-                        await send_trap_results_to_user(bot, user.telegram_id, trap_result)
+                        # Send results to user in the chat where trap was set
+                        await send_trap_results_to_user(
+                            bot, 
+                            user.telegram_id, 
+                            trap_result,
+                            chat_id=user.trap_chat_id,
+                            message_id=user.trap_message_id
+                        )
                         logger.info(f"[TRAP_CHECKER] Sent trap results to user {user.telegram_id}")
             except Exception as e:
                 logger.error(f"[TRAP_CHECKER] Error processing trap for user {user.telegram_id}: {e}", exc_info=True)
                 continue
 
 
-async def send_trap_results_to_user(bot: Bot, telegram_id: int, trap_result: dict):
+async def send_trap_results_to_user(bot: Bot, telegram_id: int, trap_result: dict, chat_id: int = None, message_id: int = None):
     """Send trap catch results to user via bot"""
     from bot.game_logic.animals import drop_to_ru
     
@@ -115,9 +121,16 @@ async def send_trap_results_to_user(bot: Bot, telegram_id: int, trap_result: dic
     )
     
     try:
-        await bot.send_message(telegram_id, text)
+        # Send to chat where trap was set, or DM if not available
+        target_chat_id = chat_id if chat_id else telegram_id
+        await bot.send_message(target_chat_id, text, reply_to_message_id=message_id)
     except Exception as e:
-        logger.error(f"[TRAP_CHECKER] Failed to send message to {telegram_id}: {e}")
+        logger.error(f"[TRAP_CHECKER] Failed to send message to chat {chat_id}, trying DM: {e}")
+        try:
+            # Fallback to DM
+            await bot.send_message(telegram_id, text)
+        except Exception as e2:
+            logger.error(f"[TRAP_CHECKER] Failed to send message to {telegram_id}: {e2}")
 
 
 async def trap_checker_loop(bot: Bot):

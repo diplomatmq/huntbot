@@ -379,6 +379,8 @@ async def quest_detail(callback: CallbackQuery):
 
     can_take = True
     is_taken = uq is not None and uq.status in {"active", "completed", "paused"}
+    is_paused = uq is not None and uq.status == "paused"
+    
     if uq and uq.status == "active":
         can_take = False
     if uq and uq.status == "completed" and not getattr(quest, "is_repeatable", False):
@@ -399,6 +401,7 @@ async def quest_detail(callback: CallbackQuery):
                 return_page=return_page,
                 can_take=can_take,
                 is_repeatable=getattr(quest, "is_repeatable", False),
+                is_paused=is_paused,
             ),
         )
     except (TelegramBadRequest, TelegramRetryAfter) as e:
@@ -470,23 +473,57 @@ async def take_quest(callback: CallbackQuery):
         # Count main and side quests
         main_count = 0
         side_count = 0
+        active_main_quest = None
+        active_side_quests = []
+        
         for uq in active_user_quests:
             quest_res = await session.execute(select(Quest).where(Quest.id == uq.quest_id))
             q = quest_res.scalar_one_or_none()
             if q:
                 if q.quest_type == "main":
                     main_count += 1
+                    active_main_quest = uq
                 else:
                     side_count += 1
+                    active_side_quests.append(uq)
         
-        # Check limits
+        # Check limits and handle swapping
         if quest.quest_type == "main":
             if main_count >= 1:
-                await callback.answer("❌ У вас уже есть активный сюжетный квест! Завершите его перед тем, как взять новый.", show_alert=True)
+                # Swap: pause current main quest, activate this one
+                if paused_uq:
+                    # Resume paused quest, pause current active
+                    active_main_quest.status = "paused"
+                    paused_uq.status = "active"
+                    await session.commit()
+                    await callback.answer(f"🔄 Квесты поменялись местами! «{quest.title}» активирован.")
+                else:
+                    # Create new, pause current active
+                    active_main_quest.status = "paused"
+                    user_quest = UserQuest(user_id=user.id, quest_id=quest_id, status="active", progress={})
+                    session.add(user_quest)
+                    await session.commit()
+                    await callback.answer(f"🔄 Квесты поменялись местами! «{quest.title}» взят.")
+                await show_quest_list(callback)
                 return
         else:  # side quest
             if side_count >= 2:
-                await callback.answer("❌ У вас уже есть 2 активных побочных квеста! Завершите один перед тем, как взять новый.", show_alert=True)
+                # Swap: pause oldest side quest, activate this one
+                oldest_side = min(active_side_quests, key=lambda x: x.started_at)
+                if paused_uq:
+                    # Resume paused quest, pause oldest active
+                    oldest_side.status = "paused"
+                    paused_uq.status = "active"
+                    await session.commit()
+                    await callback.answer(f"🔄 Квесты поменялись местами! «{quest.title}» активирован.")
+                else:
+                    # Create new, pause oldest active
+                    oldest_side.status = "paused"
+                    user_quest = UserQuest(user_id=user.id, quest_id=quest_id, status="active", progress={})
+                    session.add(user_quest)
+                    await session.commit()
+                    await callback.answer(f"🔄 Квесты поменялись местами! «{quest.title}» взят.")
+                await show_quest_list(callback)
                 return
 
         # If there's a paused quest, resume it
@@ -521,4 +558,45 @@ async def take_quest(callback: CallbackQuery):
         await session.commit()
 
     await callback.answer(f"✅ Квест «{quest.title}» взят!")
+    await show_quest_list(callback)
+
+
+@router.callback_query(F.data.startswith("pause_quest_"))
+async def pause_quest(callback: CallbackQuery):
+    # pause_quest_{questId}_{userId}
+    parts = callback.data.split("_")
+    try:
+        quest_id = int(parts[2])
+    except (IndexError, ValueError):
+        await callback.answer("❌ Неверная ссылка", show_alert=True)
+        return
+
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+
+        res = await session.execute(select(Quest).where(Quest.id == quest_id))
+        quest = res.scalar_one_or_none()
+        if not quest:
+            await callback.answer("❌ Квест не найден!", show_alert=True)
+            return
+
+        # Find active user quest
+        result = await session.execute(
+            select(UserQuest).where(
+                UserQuest.user_id == user.id,
+                UserQuest.quest_id == quest_id,
+                UserQuest.status == "active",
+            )
+        )
+        uq = result.scalar_one_or_none()
+        
+        if not uq:
+            await callback.answer("❌ Квест не активен!", show_alert=True)
+            return
+        
+        # Pause the quest
+        uq.status = "paused"
+        await session.commit()
+
+    await callback.answer(f"⏸️ Квест «{quest.title}» поставлен на паузу. Прогресс сохранён.")
     await show_quest_list(callback)

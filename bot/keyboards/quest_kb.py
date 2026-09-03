@@ -48,12 +48,16 @@ def get_quest_list_keyboard(user_id: int, section: str, quests_display: list[tup
 
 
 def get_quest_detail_keyboard(user_id: int, quest_id: int, is_taken: bool, is_active: bool,
-                              section: str, return_page: int, can_take=True, is_repeatable=False):
+                              section: str, return_page: int, can_take=True, is_repeatable=False, is_paused=False):
     buttons = []
     if not is_taken and can_take:
         buttons.append([InlineKeyboardButton(text="✅ Взять квест", callback_data=f"take_quest_{quest_id}_{user_id}")])
     elif is_active:
-        buttons.append([InlineKeyboardButton(text="🔥 В работе", callback_data=f"questinfo_none_{user_id}")])
+        # Active quest - show pause button
+        buttons.append([InlineKeyboardButton(text="⏸️ Поставить на паузу", callback_data=f"pause_quest_{quest_id}_{user_id}")])
+    elif is_paused:
+        # Paused quest - show resume button
+        buttons.append([InlineKeyboardButton(text="▶️ Возобновить", callback_data=f"take_quest_{quest_id}_{user_id}")])
     elif is_taken and is_repeatable:
         buttons.append([InlineKeyboardButton(text="🔄 Взять снова", callback_data=f"take_quest_{quest_id}_{user_id}")])
     buttons.append([
