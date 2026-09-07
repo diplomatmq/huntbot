@@ -360,8 +360,32 @@ async def cmd_trap(message: Message):
                     minutes = int(remaining.total_seconds() // 60)
                     seconds = int(remaining.total_seconds() % 60)
                     
-                    from bot.keyboards.trap_kb import get_trap_status_keyboard
-                    keyboard = get_trap_status_keyboard(message.from_user.id)
+                    # Create payment link for skipping trigger
+                    telegram_api = TelegramBotAPI(BOT_TOKEN)
+                    timestamp = int(datetime.now().timestamp())
+                    payload = f"skip_trap_trigger_{message.from_user.id}_{timestamp}"
+                    invoice_link = await telegram_api.create_invoice_link(
+                        title=f"Пропустить время ловушки",
+                        description=f"Пропустить время и получить добычу из {config['name']}",
+                        payload=payload,
+                        currency="XTR",
+                        prices=[{"label": "Пропустить время", "amount": 5}],
+                        provider_token=None
+                    )
+                    
+                    # Log transaction
+                    await create_stars_transaction(
+                        session,
+                        user.id,
+                        payload,
+                        invoice_link,
+                        5,
+                        message_id=message.message_id,
+                        chat_id=message.chat.id
+                    )
+                    
+                    from bot.keyboards.trap_kb import get_trap_setup_keyboard
+                    keyboard = get_trap_setup_keyboard(invoice_link)
                     
                     await message.answer(
                         f"⏳ <b>Ловушка уже установлена!</b>\n\n"
@@ -425,12 +449,38 @@ async def cmd_trap(message: Message):
             await message.answer("❌ Недостаточно энергии! Нужно 13 энергии для установки ловушки.", reply_to_message_id=message.message_id)
             return
         
+        # Create payment link for skipping trigger
+        telegram_api = TelegramBotAPI(BOT_TOKEN)
+        timestamp = int(datetime.now().timestamp())
+        payload = f"skip_trap_trigger_{message.from_user.id}_{timestamp}"
+        invoice_link = await telegram_api.create_invoice_link(
+            title=f"Пропустить время ловушки",
+            description=f"Пропустить время и получить добычу из {config['name']}",
+            payload=payload,
+            currency="XTR",
+            prices=[{"label": "Пропустить время", "amount": 5}],
+            provider_token=None
+        )
+        
+        # Log transaction
+        await create_stars_transaction(
+            session,
+            user.id,
+            payload,
+            invoice_link,
+            5,
+            message_id=message.message_id,
+            chat_id=message.chat.id
+        )
+        
+        from bot.keyboards.trap_kb import get_trap_setup_keyboard
         await message.answer(
             f"{config['emoji']} <b>{config['name']} установлена!</b>\n\n"
             f"⏰ Сработает в течение {config['trigger_time_min']} минут\n"
             f"🎯 Поймает от {config['animals_min']} до {config['animals_max']} животных\n"
             f"⚡ Потрачено энергии: 13\n\n"
             f"💡 Когда ловушка сработает, вы получите уведомление автоматически!",
+            reply_markup=get_trap_setup_keyboard(invoice_link),
             reply_to_message_id=message.message_id
         )
 
@@ -717,57 +767,7 @@ async def handle_trap_payment(message: Message, payload: str, telegram_payment_i
         )
 
 
-@router.callback_query(F.data.startswith("skip_trap_trigger_"))
-async def skip_trap_trigger(callback: CallbackQuery):
-    """Handle skip trap trigger button - create payment link for 5 stars"""
-    # Check user_id protection
-    user_id_from_callback = int(callback.data.split("_")[-1])
-    if callback.from_user.id != user_id_from_callback:
-        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
-        return
-    
-    async with async_session() as session:
-        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
-        
-        # Check if trap is active
-        if not user.trap_active or not user.trap_set_time:
-            await callback.answer("❌ Ловушка не активна!", show_alert=True)
-            return
-        
-        config = TRAP_CONFIGS[user.trap_level]
-        
-        # Create payment link for skipping trigger
-        telegram_api = TelegramBotAPI(BOT_TOKEN)
-        timestamp = int(datetime.now().timestamp())
-        payload = f"skip_trap_trigger_{callback.from_user.id}_{timestamp}"
-        invoice_link = await telegram_api.create_invoice_link(
-            title=f"Пропустить время ловушки",
-            description=f"Пропустить время и получить добычу из {config['name']}",
-            payload=payload,
-            currency="XTR",
-            prices=[{"label": "Пропустить время", "amount": 5}],
-            provider_token=None
-        )
-        
-        # Log transaction
-        await create_stars_transaction(
-            session,
-            user.id,
-            payload,
-            invoice_link,
-            5,
-            message_id=callback.message.message_id,
-            chat_id=callback.message.chat.id
-        )
-        
-        await callback.message.answer(
-            f"💳 <b>Оплата пропуска времени</b>\n\n"
-            f"⏭️ Пропустить время {config['name']}\n"
-            f"💰 Цена: 5 ⭐\n\n"
-            f"Нажмите на ссылку для оплаты:",
-            reply_markup=get_trap_payment_keyboard(invoice_link, 5, callback.from_user.id)
-        )
-        await callback.answer("✅ Ссылка на оплату отправлена!")
+
 
 
 @router.callback_query(F.data.startswith("upgrade_trap_"))
