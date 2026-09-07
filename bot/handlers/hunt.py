@@ -1145,6 +1145,13 @@ async def process_successful_payment(message: Message):
         from bot.handlers.trap import handle_trap_payment
         await handle_trap_payment(message, payload, telegram_payment_id)
         return
+    
+    # Route to trap trigger handler if it's a trap trigger payment
+    if payload.startswith("skip_trap_trigger_"):
+        logger.info(f"[PAYMENT] Routing to trap trigger handler")
+        from bot.handlers.trap import handle_trap_trigger_payment
+        await handle_trap_trigger_payment(message, payload, telegram_payment_id)
+        return
 
     logger.info(f"[PAYMENT] Processing hunt/cooldown payment")
 

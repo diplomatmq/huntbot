@@ -313,9 +313,24 @@ async def quest_paginate(callback: CallbackQuery):
         page = int(parts[2])
     except ValueError:
         page = 1
-    callback_data = f"questlist_{section}_{page}_{callback.from_user.id}"
-    callback.data = callback_data
-    await show_quest_list(callback)
+    
+    # Validate user_id matches (middleware should handle this, but double-check)
+    user_id_from_callback = int(parts[3])
+    if callback.from_user.id != user_id_from_callback:
+        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
+        return
+    
+    # Call the appropriate render function based on section
+    if section == "all":
+        await _render_all_quests(callback, page=page)
+    else:
+        # For active and available sections, call show_quest_list with proper callback data
+        original_data = callback.data
+        callback.data = f"questlist_{section}_{page}_{callback.from_user.id}"
+        try:
+            await show_quest_list(callback)
+        finally:
+            callback.data = original_data
 
 
 @router.callback_query(F.data.startswith("questdetail_"))

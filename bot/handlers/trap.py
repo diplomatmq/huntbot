@@ -134,11 +134,13 @@ async def check_and_trigger_trap(user, session):
     return None
 
 
-async def trigger_trap_catch(user, session, config):
+async def trigger_trap_catch(user, session, config, skip_cooldown=False):
     """Process trap catch"""
     # Deactivate trap
     user.trap_active = False
-    user.last_trap_time = datetime.utcnow()
+    # Only set installation cooldown if not skipping
+    if not skip_cooldown:
+        user.last_trap_time = datetime.utcnow()
     
     # Determine number of animals caught
     num_animals = random.randint(config["animals_min"], config["animals_max"])
@@ -357,11 +359,16 @@ async def cmd_trap(message: Message):
                 if remaining.total_seconds() > 0:
                     minutes = int(remaining.total_seconds() // 60)
                     seconds = int(remaining.total_seconds() % 60)
+                    
+                    from bot.keyboards.trap_kb import get_trap_status_keyboard
+                    keyboard = get_trap_status_keyboard(message.from_user.id)
+                    
                     await message.answer(
                         f"⏳ <b>Ловушка уже установлена!</b>\n\n"
                         f"{config['emoji']} {config['name']}\n"
                         f"⏰ Сработает через: ~{minutes} мин {seconds} сек\n\n"
                         f"💡 Когда ловушка сработает, вы получите уведомление автоматически!",
+                        reply_markup=keyboard,
                         reply_to_message_id=message.message_id
                     )
                     return
@@ -404,7 +411,7 @@ async def cmd_trap(message: Message):
                 
                 await message.answer(
                     error_msg,
-                    reply_markup=get_trap_payment_keyboard(invoice_link, config["skip_cost"]),
+                    reply_markup=get_trap_payment_keyboard(invoice_link, config["skip_cost"], message.from_user.id),
                     reply_to_message_id=message.message_id
                 )
             else:
@@ -490,6 +497,113 @@ from bot.database.models import StarsTransaction
 
 paid_trap_payloads = set()
 PAID_TRAP_PAYLOADS_MAX = 1000
+
+
+@router.pre_checkout_query(F.invoice_payload.startswith("skip_trap_trigger_"))
+async def process_pre_checkout_query_trap_trigger(pre_checkout_query: PreCheckoutQuery):
+    """Pre-checkout handler for trap trigger skip payments"""
+    payload = pre_checkout_query.invoice_payload
+    telegram_user_id = pre_checkout_query.from_user.id
+
+    async with async_session() as session:
+        # Get user by telegram_id
+        user = await get_or_create_user(session, telegram_user_id, pre_checkout_query.from_user.username)
+        
+        # Check transaction in database
+        result = await session.execute(
+            select(StarsTransaction).where(
+                and_(
+                    StarsTransaction.invoice_payload == payload,
+                    StarsTransaction.status == "pending"
+                )
+            ).order_by(StarsTransaction.created_at.desc()).limit(1)
+        )
+        transaction = result.scalar_one_or_none()
+
+        if not transaction:
+            await pre_checkout_query.answer(ok=False, error_message="Инвойс не найден. Запросите новый.")
+            return
+
+        # Check if transaction belongs to this user
+        if transaction.user_id != user.id:
+            await pre_checkout_query.answer(ok=False, error_message="Этот инвойс создан для другого пользователя.")
+            return
+
+        # Check if already paid
+        if payload in paid_trap_payloads:
+            await pre_checkout_query.answer(ok=False, error_message="Этот инвойс уже оплачен.")
+            return
+
+        # Check if invoice is expired (15 minutes)
+        now_ts = int(datetime.now().timestamp())
+        parts = payload.split("_")
+        try:
+            timestamp = int(parts[-1])
+            if now_ts - timestamp > 900:
+                await pre_checkout_query.answer(ok=False, error_message="Срок действия инвойса истек. Запросите новый.")
+                return
+        except (ValueError, IndexError):
+            pass
+
+        await pre_checkout_query.answer(ok=True)
+
+
+async def handle_trap_trigger_payment(message: Message, payload: str, telegram_payment_id: str):
+    """Handle successful trap trigger skip payment"""
+    global paid_trap_payloads
+    
+    # Protection against duplicate payments
+    if payload in paid_trap_payloads:
+        return
+    
+    # Mark payload as paid
+    if len(paid_trap_payloads) >= PAID_TRAP_PAYLOADS_MAX:
+        old_entries = list(paid_trap_payloads)
+        paid_trap_payloads = set(old_entries[len(old_entries)//2:])
+    paid_trap_payloads.add(payload)
+    
+    async with async_session() as session:
+        user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+        
+        # Find and update transaction
+        result = await session.execute(
+            select(StarsTransaction).where(
+                and_(
+                    StarsTransaction.user_id == user.id,
+                    StarsTransaction.invoice_payload == payload,
+                    StarsTransaction.status == "pending"
+                )
+            ).order_by(StarsTransaction.created_at.desc()).limit(1)
+        )
+        transaction = result.scalar_one_or_none()
+        
+        reply_to_id = transaction.message_id if transaction else None
+        
+        if transaction:
+            await update_stars_transaction(
+                session,
+                transaction.id,
+                "completed",
+                telegram_payment_id=telegram_payment_id
+            )
+        
+        # Check if trap is still active
+        if not user.trap_active or not user.trap_set_time:
+            await message.answer(
+                "❌ Ловушка больше не активна!",
+                reply_to_message_id=reply_to_id
+            )
+            return
+        
+        # Get trap config and trigger immediately (without affecting installation cooldown)
+        config = TRAP_CONFIGS[user.trap_level]
+        trap_result = await trigger_trap_catch(user, session, config, skip_cooldown=True)
+        
+        await session.commit()
+        await session.refresh(user)
+        
+        # Send results message
+        await send_trap_results(message, trap_result)
 
 
 @router.pre_checkout_query(F.invoice_payload.startswith("skip_trap_cooldown_"))
@@ -601,6 +715,59 @@ async def handle_trap_payment(message: Message, payload: str, telegram_payment_i
             f"💡 Используйте команду <b>ловушка</b> после срабатывания, чтобы получить добычу!",
             reply_to_message_id=reply_to_id
         )
+
+
+@router.callback_query(F.data.startswith("skip_trap_trigger_"))
+async def skip_trap_trigger(callback: CallbackQuery):
+    """Handle skip trap trigger button - create payment link for 5 stars"""
+    # Check user_id protection
+    user_id_from_callback = int(callback.data.split("_")[-1])
+    if callback.from_user.id != user_id_from_callback:
+        await callback.answer("❌ Эта кнопка не для вас!", show_alert=True)
+        return
+    
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Check if trap is active
+        if not user.trap_active or not user.trap_set_time:
+            await callback.answer("❌ Ловушка не активна!", show_alert=True)
+            return
+        
+        config = TRAP_CONFIGS[user.trap_level]
+        
+        # Create payment link for skipping trigger
+        telegram_api = TelegramBotAPI(BOT_TOKEN)
+        timestamp = int(datetime.now().timestamp())
+        payload = f"skip_trap_trigger_{callback.from_user.id}_{timestamp}"
+        invoice_link = await telegram_api.create_invoice_link(
+            title=f"Пропустить время ловушки",
+            description=f"Пропустить время и получить добычу из {config['name']}",
+            payload=payload,
+            currency="XTR",
+            prices=[{"label": "Пропустить время", "amount": 5}],
+            provider_token=None
+        )
+        
+        # Log transaction
+        await create_stars_transaction(
+            session,
+            user.id,
+            payload,
+            invoice_link,
+            5,
+            message_id=callback.message.message_id,
+            chat_id=callback.message.chat.id
+        )
+        
+        await callback.message.answer(
+            f"💳 <b>Оплата пропуска времени</b>\n\n"
+            f"⏭️ Пропустить время {config['name']}\n"
+            f"💰 Цена: 5 ⭐\n\n"
+            f"Нажмите на ссылку для оплаты:",
+            reply_markup=get_trap_payment_keyboard(invoice_link, 5, callback.from_user.id)
+        )
+        await callback.answer("✅ Ссылка на оплату отправлена!")
 
 
 @router.callback_query(F.data.startswith("upgrade_trap_"))

@@ -13,6 +13,11 @@ _ammo_quantity_wait = set()
 # Track selected ammo type and price per user: {user_id: {"name": "Стрелы", "price": 5}}
 _ammo_selection = {}
 
+# Users waiting to input bulk quantity
+_bulk_quantity_wait = set()
+# Track selected bulk item: {user_id: {"name": "Приманка травоядная", "price": 25, "currency": "coins", "type": "bait_herbivore"}}
+_bulk_selection = {}
+
 
 def _is_shop_main_callback(data: str) -> bool:
     parts = data.split("_")
@@ -84,7 +89,7 @@ async def show_shop_category(callback: CallbackQuery):
             text += f"• {item['name']} — {currency} {item['price']}\n"
 
         try:
-            await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items))
+            await callback.message.edit_text(text, reply_markup=get_shop_category_keyboard(callback.from_user.id, category, items, user))
         except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
                 raise
@@ -266,6 +271,107 @@ async def handle_ammo_quantity_input(message: Message):
 
     # Clean up selection
     _ammo_selection.pop(uid, None)
+
+
+@router.callback_query(F.data.startswith("bulk_"))
+async def buy_bulk_item(callback: CallbackQuery):
+    """Handle bulk purchase of bait and potions"""
+    item_data = callback.data.split("_", 1)[1]
+    parts = item_data.split("_")
+    item_name = "_".join(parts[:-3]).replace("_", " ")
+    price = int(parts[-3])
+    currency = parts[-2]
+    
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Only allow bulk purchase for coins items (bait and energy potions)
+        if currency == "stars":
+            await callback.answer("❌ Оптовая покупка доступна только за монеты!", show_alert=True)
+            return
+        
+        if currency == "coins":
+            max_quantity = user.coins // price
+            if max_quantity == 0:
+                await callback.answer("❌ Недостаточно монет!", show_alert=True)
+                return
+        
+        # Store selected bulk item info
+        _bulk_selection[callback.from_user.id] = {
+            "name": item_name,
+            "price": price,
+            "currency": currency
+        }
+        _bulk_quantity_wait.add(callback.from_user.id)
+        
+        # Determine item type
+        item_type = "bait" if "приманка" in item_name.lower() else "potion"
+        
+        text = (
+            f"📦 <b>Оптовая покупка {item_name}</b>\n\n"
+            f"Цена за 1 шт: {price} 💰\n"
+            f"Ваши монеты: {user.coins} 💰\n"
+            f"Максимум можно купить: {max_quantity} шт\n\n"
+            f"👉 Введите количество для покупки\n"
+            f"👉 Введите <b>0</b> для отмены"
+        )
+        try:
+            await callback.message.edit_text(text)
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
+            if "message is not modified" not in str(e):
+                raise
+        await callback.answer()
+
+
+@router.message(F.text.isdigit(), F.from_user.id.in_(_bulk_quantity_wait))
+async def handle_bulk_quantity_input(message: Message):
+    """Handle bulk quantity input from user"""
+    uid = message.from_user.id
+
+    _bulk_quantity_wait.discard(uid)
+
+    try:
+        quantity = int(message.text)
+    except ValueError:
+        await message.answer("❌ Введите число!", reply_to_message_id=message.message_id)
+        return
+
+    if quantity <= 0:
+        await message.answer("🚫 Покупка отменена.", reply_to_message_id=message.message_id)
+        return
+
+    # Get selected bulk item info
+    bulk_info = _bulk_selection.get(uid)
+    if not bulk_info:
+        await message.answer("❌ Ошибка выбора предмета. Попробуйте снова.", reply_to_message_id=message.message_id)
+        return
+
+    item_name = bulk_info["name"]
+    price_per_unit = bulk_info["price"]
+    total_price = quantity * price_per_unit
+
+    async with async_session() as session:
+        user = await get_or_create_user(session, uid, message.from_user.username)
+
+        if user.coins < total_price:
+            await message.answer("❌ Недостаточно монет!", reply_to_message_id=message.message_id)
+            return
+
+        user.coins -= total_price
+        
+        # Determine item type
+        item_type = "bait" if "приманка" in item_name.lower() else "potion"
+        
+        await add_inventory_item(session, user.id, item_name, item_type, quantity, "common")
+        await session.commit()
+
+        await message.answer(
+            f"✅ Куплено {quantity} {item_name} за {total_price} монет!",
+            reply_to_message_id=message.message_id
+        )
+
+    # Clean up selection
+    _bulk_selection.pop(uid, None)
 
 
 # Payment handlers for potions
