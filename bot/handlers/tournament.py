@@ -203,7 +203,7 @@ async def cmd_tour(message: Message):
     metric = tournament.metric
     lines = []
     for position, (score, user) in enumerate(rows, 1):
-        player_name = f"@{user.username}" if user.username else str(user.telegram_id)
+        player_name = user.username if user.username else str(user.telegram_id)
         value = f"{score.total_weight:.1f} кг" if metric == "weight" else f"{score.animals_count} животных"
         lines.append(f"{position}. {player_name} — {value}")
 
