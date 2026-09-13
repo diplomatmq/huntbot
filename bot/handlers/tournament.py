@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -17,6 +18,7 @@ from bot.database.queries import (
 from bot.states.tournament import TournamentStates
 
 router = Router()
+logger = logging.getLogger(__name__)
 DATE_FORMAT = "%Y-%m-%d %H:%M"
 METRIC_LABELS = {"weight": "общий вес", "animals": "количество животных"}
 
@@ -136,21 +138,29 @@ async def cancel_tournament(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(TournamentStates.confirmation, F.data == "tour_confirm")
 async def confirm_tournament(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    starts_at = datetime.fromisoformat(data["starts_at"])
-    ends_at = datetime.fromisoformat(data["ends_at"])
-    async with async_session() as session:
-        tournament = Tournament(
-            name=data["name"],
-            metric=data["metric"],
-            starts_at=starts_at,
-            ends_at=ends_at,
-            winners_count=data["winners_count"],
-            status="active",
+    await callback.answer("Создаю турнир...")
+    try:
+        data = await state.get_data()
+        starts_at = datetime.fromisoformat(data["starts_at"])
+        ends_at = datetime.fromisoformat(data["ends_at"])
+        async with async_session() as session:
+            tournament = Tournament(
+                name=data["name"],
+                metric=data["metric"],
+                starts_at=starts_at,
+                ends_at=ends_at,
+                winners_count=data["winners_count"],
+                status="active",
+            )
+            session.add(tournament)
+            await session.commit()
+            users = await get_all_users(session)
+    except Exception:
+        logger.exception("Failed to create tournament")
+        await callback.message.edit_text(
+            "Не удалось создать турнир. Проверьте подключение к базе данных и попробуйте снова."
         )
-        session.add(tournament)
-        await session.commit()
-        users = await get_all_users(session)
+        return
 
     announcement = (
         f"🏆 <b>Начался новый турнир!</b>\n\n"
@@ -170,8 +180,11 @@ async def confirm_tournament(callback: CallbackQuery, state: FSMContext):
             continue
 
     if callback.from_user.id not in {user.telegram_id for user in users}:
-        await callback.bot.send_message(callback.from_user.id, announcement)
-        sent_count += 1
+        try:
+            await callback.bot.send_message(callback.from_user.id, announcement)
+            sent_count += 1
+        except Exception:
+            logger.exception("Failed to send tournament announcement to admin")
 
     await state.clear()
     await callback.message.edit_text(f"Турнир создан. Уведомления отправлены: {sent_count}.")
