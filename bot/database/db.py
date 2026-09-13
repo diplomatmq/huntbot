@@ -72,7 +72,8 @@ async def _migrate_species_from_json():
 async def add_missing_columns():
     from bot.database.models import (
         User, Inventory, Weapon, Quest, UserQuest,
-        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies, HuntLog
+        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies, HuntLog,
+        Tournament, TournamentScore
     )
 
     async with engine.connect() as conn:
@@ -119,7 +120,8 @@ async def add_missing_columns():
 async def init_db():
     from bot.database.models import (
         User, Inventory, Weapon, Quest, UserQuest,
-        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies
+        Animal, Trophy, AuctionLot, StarsTransaction, AnimalSpecies,
+        Tournament, TournamentScore
     )
 
     async with engine.begin() as conn:

@@ -275,3 +275,32 @@ class HuntLog(Base):
     hunt_time = Column(DateTime, default=func.now())
 
     user = relationship("User", back_populates="hunt_logs")
+
+
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    metric = Column(String, nullable=False, default="weight")  # weight or animals
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+    winners_count = Column(Integer, nullable=False, default=1)
+    status = Column(String, nullable=False, default="active")  # active, finished
+    created_at = Column(DateTime, default=func.now())
+
+    scores = relationship("TournamentScore", back_populates="tournament", cascade="all, delete-orphan")
+
+
+class TournamentScore(Base):
+    __tablename__ = "tournament_scores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    total_weight = Column(Float, nullable=False, default=0.0)
+    animals_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    tournament = relationship("Tournament", back_populates="scores")
+    user = relationship("User")

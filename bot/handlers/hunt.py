@@ -13,7 +13,7 @@ from bot.database.queries import (
     update_hunt_cooldown, add_inventory_item, update_location_progress,
     add_exp, add_coins, add_energy, get_equipped_weapon, get_active_quests,
     create_stars_transaction, update_stars_transaction, consume_inventory_item,
-    add_species_kill, log_hunt,
+    add_species_kill, log_hunt, record_tournament_catch,
 )
 from bot.game_logic.animals import (
     select_random_animal, calculate_rewards, generate_drops, can_kill_animal,
@@ -288,6 +288,7 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
             session, user.id, animal.name, animal.emoji, user.current_location,
             animal.rarity, weight, exp, coins, drops, True, user.game_mode
         )
+        await record_tournament_catch(session, user.id, weight)
         
         # Update statistics based on mode
         animal_name_key = animal.name.lower()

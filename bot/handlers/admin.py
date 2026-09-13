@@ -17,6 +17,7 @@ async def cmd_admin(message: Message):
         "• <code>/stats</code> — Статистика бота\n"
         "• <code>/broadcast [текст]</code> — Рассылка всем игрокам\n"
         "• <code>/addcoins [id] [сумма]</code> — Добавить монеты игроку\n"
-        "• <code>/addstars [id] [сумма]</code> — Добавить звёзды игроку"
+        "• <code>/addstars [id] [сумма]</code> — Добавить звёзды игроку\n"
+        "• <code>/new_tour</code> — Создать турнир в личке"
     )
     await message.answer(text)

@@ -1,7 +1,10 @@
 from sqlalchemy import select, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-from bot.database.models import User, Inventory, Weapon, Quest, UserQuest, Animal, Trophy, AuctionLot, StarsTransaction
+from bot.database.models import (
+    User, Inventory, Weapon, Quest, UserQuest, Animal, Trophy, AuctionLot,
+    StarsTransaction, Tournament, TournamentScore
+)
 from datetime import datetime, timedelta
 from bot.config import MAX_ENERGY, ENERGY_REGEN_PASSIVE
 
@@ -553,6 +556,68 @@ async def log_hunt(session: AsyncSession, user_id: int, animal_name: str, animal
         game_mode=game_mode
     )
     session.add(hunt_log)
+
+
+async def record_tournament_catch(
+    session: AsyncSession,
+    user_id: int,
+    weight: float,
+    caught_at: datetime | None = None,
+):
+    """Add a successful catch to every tournament active at the catch time."""
+    caught_at = caught_at or datetime.utcnow()
+    result = await session.execute(
+        select(Tournament).where(
+            Tournament.starts_at <= caught_at,
+            Tournament.ends_at >= caught_at,
+            Tournament.status == "active",
+        )
+    )
+    tournaments = result.scalars().all()
+    if not tournaments:
+        return
+
+    for tournament in tournaments:
+        score_result = await session.execute(
+            select(TournamentScore).where(
+                TournamentScore.tournament_id == tournament.id,
+                TournamentScore.user_id == user_id,
+            )
+        )
+        score = score_result.scalar_one_or_none()
+        if score is None:
+            score = TournamentScore(
+                tournament_id=tournament.id,
+                user_id=user_id,
+                total_weight=0.0,
+                animals_count=0,
+            )
+            session.add(score)
+        score.total_weight += float(weight)
+        score.animals_count += 1
+
+
+async def get_current_tournament(session: AsyncSession, now: datetime | None = None) -> Tournament | None:
+    now = now or datetime.utcnow()
+    result = await session.execute(
+        select(Tournament)
+        .where(Tournament.starts_at <= now, Tournament.ends_at >= now, Tournament.status == "active")
+        .order_by(Tournament.ends_at.asc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_tournament_top(session: AsyncSession, tournament: Tournament, limit: int = 10):
+    metric_column = TournamentScore.total_weight if tournament.metric == "weight" else TournamentScore.animals_count
+    result = await session.execute(
+        select(TournamentScore, User)
+        .join(User, User.id == TournamentScore.user_id)
+        .where(TournamentScore.tournament_id == tournament.id)
+        .order_by(metric_column.desc(), TournamentScore.updated_at.asc())
+        .limit(limit)
+    )
+    return result.all()
 
 
 async def migrate_animal_species(session: AsyncSession) -> bool:

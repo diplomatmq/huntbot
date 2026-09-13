@@ -9,7 +9,7 @@ from bot.database.db import async_session
 from bot.database.queries import (
     get_or_create_user, update_energy, add_inventory_item,
     add_exp, add_coins, update_location_progress, add_species_kill, log_hunt,
-    create_stars_transaction, update_stars_transaction
+    create_stars_transaction, update_stars_transaction, record_tournament_catch
 )
 from bot.game_logic.animals import select_random_animal, calculate_rewards, generate_drops, drop_to_ru
 from bot.game_logic.locations import get_location
@@ -191,6 +191,7 @@ async def trigger_trap_catch(user, session, config, skip_cooldown=False):
             session, user.id, animal.name, animal.emoji, user.current_location,
             animal.rarity, weight, exp, coins, drops, True, user.game_mode
         )
+        await record_tournament_catch(session, user.id, weight)
         
         # Track for quest progress (store animal name and drops with animal source)
         if animal.name not in quest_progress_updates:
