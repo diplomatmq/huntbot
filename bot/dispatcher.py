@@ -42,6 +42,7 @@ async def get_dispatcher() -> Dispatcher:
         logger.error(f"Unhandled error: {type(exception).__name__}: {exception}", exc_info=exception)
         return False
     
+    dp.include_router(tournament.router)
     dp.include_router(common.router)
     dp.include_router(hunt.router)
     dp.include_router(trap.router)
@@ -51,6 +52,5 @@ async def get_dispatcher() -> Dispatcher:
     dp.include_router(quest.router)
     dp.include_router(profile.router)
     dp.include_router(admin.router)
-    dp.include_router(tournament.router)
     
     return dp
