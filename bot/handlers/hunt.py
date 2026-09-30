@@ -954,18 +954,85 @@ async def cmd_rest(message: Message):
     async with async_session() as session:
         user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
         
-        # Check if user has meat
-        has_meat = await consume_inventory_item(session, user.id, "мясо", "meat", portions)
-        if not has_meat:
-            await message.answer(f"❌ У вас нет мяса! Нужно {portions} порций.", reply_to_message_id=message.message_id)
+        # Get all meat items sorted by rarity (lowest first)
+        rarity_order = ["common", "uncommon", "rare", "epic", "legendary"]
+        
+        result = await session.execute(
+            select(Inventory).where(
+                and_(
+                    Inventory.user_id == user.id,
+                    Inventory.item_name.ilike("мясо"),
+                    Inventory.item_type == "meat"
+                )
+            )
+        )
+        meat_items = result.scalars().all()
+        
+        if not meat_items:
+            await message.answer(f"❌ У вас нет мяса!", reply_to_message_id=message.message_id)
             return
+        
+        # Sort by rarity (lowest first)
+        meat_items_sorted = sorted(meat_items, key=lambda x: rarity_order.index(x.rarity) if x.rarity in rarity_order else 999)
+        
+        # Calculate total available meat
+        total_meat = sum(item.quantity for item in meat_items_sorted)
+        
+        if total_meat < portions:
+            await message.answer(
+                f"❌ У вас недостаточно мяса!\n"
+                f"Есть: {total_meat} порций\n"
+                f"Нужно: {portions} порций",
+                reply_to_message_id=message.message_id
+            )
+            return
+        
+        # Consume meat starting from lowest rarity
+        remaining = portions
+        consumed_by_rarity = {}
+        
+        for meat_item in meat_items_sorted:
+            if remaining <= 0:
+                break
+            
+            to_consume = min(remaining, meat_item.quantity)
+            meat_item.quantity -= to_consume
+            remaining -= to_consume
+            
+            # Track consumed by rarity for display
+            if meat_item.rarity not in consumed_by_rarity:
+                consumed_by_rarity[meat_item.rarity] = 0
+            consumed_by_rarity[meat_item.rarity] += to_consume
+            
+            # Remove item if quantity is 0
+            if meat_item.quantity <= 0:
+                await session.delete(meat_item)
+        
+        await session.commit()
         
         # Add energy
         energy_gain = portions * 20
         user = await add_energy(session, user, energy_gain)
         
+        # Format consumed meat message
+        consumed_text = []
+        rarity_emoji = {
+            "common": "⚪",
+            "uncommon": "🟢",
+            "rare": "🔵",
+            "epic": "🟣",
+            "legendary": "🟡"
+        }
+        for rarity in rarity_order:
+            if rarity in consumed_by_rarity:
+                emoji = rarity_emoji.get(rarity, "⚪")
+                consumed_text.append(f"{emoji} {consumed_by_rarity[rarity]}x {rarity}")
+        
+        consumed_display = "\n".join(consumed_text) if consumed_text else f"{portions} порций"
+        
         await message.answer(
-            f"😴 <b>Вы отдохнули и съели {portions} порций мяса.</b>\n\n"
+            f"😴 <b>Вы отдохнули и съели {portions} порций мяса</b>\n\n"
+            f"Съедено:\n{consumed_display}\n\n"
             f"+{energy_gain} энергии\n\n"
             f"⚡ Энергия: {user.energy}/{user.max_energy}",
             reply_to_message_id=message.message_id
