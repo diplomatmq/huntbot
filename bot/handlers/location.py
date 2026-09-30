@@ -103,12 +103,14 @@ async def travel_to_location(callback: CallbackQuery):
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
         user = await update_energy(session, user)
         
+        # Check if location exists
+        target_location = get_location(location_id)
+        if not target_location:
+            await callback.answer(f"❌ Локация '{location_id}' не найдена!", show_alert=True)
+            return
+        
         if not can_unlock_location(location_id, user.location_progress, user.game_mode):
             # Get detailed reason why location is locked
-            target_location = get_location(location_id)
-            if not target_location:
-                await callback.answer("❌ Локация не найдена!", show_alert=True)
-                return
             
             if user.game_mode == "free":
                 await callback.answer("❌ Локация недоступна!", show_alert=True)
