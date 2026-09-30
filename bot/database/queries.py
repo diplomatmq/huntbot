@@ -177,18 +177,51 @@ async def update_stars_transaction(
     return transaction
 
 
+async def apply_injury_effect(session: AsyncSession, user: User) -> User:
+    """Apply injury effect to user (doubles cooldown for 15 hours)"""
+    user.injured = True
+    user.injured_until = datetime.utcnow() + timedelta(hours=15)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def remove_injury_effect(session: AsyncSession, user: User) -> User:
+    """Remove injury effect from user"""
+    user.injured = False
+    user.injured_until = None
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
+async def check_and_clear_injury(session: AsyncSession, user: User) -> User:
+    """Check if injury expired and clear it"""
+    if user.injured and user.injured_until:
+        if datetime.utcnow() >= user.injured_until:
+            user = await remove_injury_effect(session, user)
+    return user
+
+
 async def can_hunt(user: User) -> tuple[bool, str, int, int]:
     """Check if user can hunt (energy and cooldown)"""
     if user.energy < 5:
         return False, "Недостаточно энергии! (нужно 5)", 0, 0
 
     if user.last_hunt_time:
-        cooldown_remaining = (user.last_hunt_time + timedelta(seconds=600)) - datetime.utcnow()
+        # Check if user is injured (doubles cooldown to 20 minutes)
+        base_cooldown = 600  # 10 minutes in seconds
+        if user.injured and user.injured_until and datetime.utcnow() < user.injured_until:
+            base_cooldown = 1200  # 20 minutes when injured
+        
+        cooldown_remaining = (user.last_hunt_time + timedelta(seconds=base_cooldown)) - datetime.utcnow()
         if cooldown_remaining.total_seconds() > 0:
             total_seconds = int(cooldown_remaining.total_seconds())
             minutes = total_seconds // 60
             seconds = total_seconds % 60
-            return False, f"Кулдаун: {minutes} мин. Пропустить за 1 ⭐", minutes, seconds
+            # Cost to skip cooldown is also doubled when injured
+            skip_cost = 2 if user.injured else 1
+            return False, f"Кулдаун: {minutes} мин. Пропустить за {skip_cost} ⭐", minutes, seconds
 
     return True, "", 0, 0
 

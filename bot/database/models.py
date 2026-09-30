@@ -34,6 +34,10 @@ class User(Base):
     # Hunt cooldown
     last_hunt_time = Column(DateTime, nullable=True)
     
+    # Injury system
+    injured = Column(Boolean, default=False)
+    injured_until = Column(DateTime, nullable=True)
+    
     # Skills (JSON: {"accuracy": 0, "stealth": 0, "endurance": 0})
     skills = Column(JSON, default={"accuracy": 0, "stealth": 0, "endurance": 0})
     

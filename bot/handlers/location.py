@@ -35,6 +35,8 @@ async def show_locations(callback: CallbackQuery):
         user = await update_energy(session, user)
 
         unlocked = get_unlocked_locations(user.location_progress, user.game_mode)
+        unlocked_ids = {loc.id for loc in unlocked}
+        all_locations = get_all_locations()
         boss_defeated_locs = await get_boss_defeated_locations(session, user.id)
 
         mode_text = "🆓 Свободный режим" if user.game_mode == "free" else "📖 Сюжетный режим"
@@ -47,6 +49,7 @@ async def show_locations(callback: CallbackQuery):
             text += "В сюжетном режиме локации открываются по мере прохождения.\n"
             text += "Набирайте прогресс, чтобы открыть новые локации!\n\n"
 
+        # Show unlocked locations
         for loc in unlocked:
             progress = user.location_progress.get(loc.id, 0)
             is_current = loc.id == user.current_location
@@ -71,6 +74,18 @@ async def show_locations(callback: CallbackQuery):
                 boss_status = " (✅ Босс побеждён)" if boss_defeated else ""
                 text += f"{status} {loc.emoji} <b>{loc.name}</b>{boss_status}\n"
                 text += f"   {loc.description}\n\n"
+        
+        # Show next locked location in story mode
+        if user.game_mode == "story":
+            for loc in all_locations:
+                if loc.id not in unlocked_ids and loc.required_progress:
+                    required_loc = get_location(loc.required_progress)
+                    if required_loc and required_loc.id in unlocked_ids:
+                        current_progress = user.location_progress.get(loc.required_progress, 0)
+                        needed_progress = loc.progress_threshold
+                        text += f"🔒 {loc.emoji} <b>{loc.name}</b> (заблокирована)\n"
+                        text += f"   Требуется прогресс в {required_loc.emoji} {required_loc.name}: {current_progress:.1f}%/{needed_progress}%\n\n"
+                        break  # Show only next locked location
 
         try:
             await callback.message.edit_text(text, reply_markup=get_locations_keyboard(callback.from_user.id, unlocked))
@@ -89,7 +104,32 @@ async def travel_to_location(callback: CallbackQuery):
         user = await update_energy(session, user)
         
         if not can_unlock_location(location_id, user.location_progress, user.game_mode):
-            await callback.answer("❌ Локация не разблокирована! Завершите предыдущую локацию в сюжетном режиме.", show_alert=True)
+            # Get detailed reason why location is locked
+            target_location = get_location(location_id)
+            if not target_location:
+                await callback.answer("❌ Локация не найдена!", show_alert=True)
+                return
+            
+            if user.game_mode == "free":
+                await callback.answer("❌ Локация недоступна!", show_alert=True)
+                return
+            
+            # Story mode - check requirements
+            if target_location.required_progress:
+                required_loc = get_location(target_location.required_progress)
+                current_progress = user.location_progress.get(target_location.required_progress, 0)
+                needed_progress = target_location.progress_threshold
+                
+                lock_reason = (
+                    f"🔒 Локация заблокирована!\n\n"
+                    f"Требования:\n"
+                    f"📍 Прогресс в локации {required_loc.emoji} {required_loc.name}: "
+                    f"{current_progress:.1f}% / {needed_progress}%\n\n"
+                    f"💡 Выполняйте квесты в локации «{required_loc.name}», чтобы набрать прогресс!"
+                )
+                await callback.answer(lock_reason, show_alert=True)
+            else:
+                await callback.answer("❌ Локация не разблокирована!", show_alert=True)
             return
         
         energy_cost = 5
@@ -121,6 +161,9 @@ async def travel_to_location(callback: CallbackQuery):
         text += "В сюжетном режиме локации открываются по мере прохождения.\n"
         text += "Набирайте прогресс, чтобы открыть новые локации!\n\n"
     
+    unlocked_ids = {loc.id for loc in unlocked}
+    all_locations = get_all_locations()
+    
     for loc in unlocked:
         progress = user.location_progress.get(loc.id, 0)
         is_current = loc.id == user.current_location
@@ -145,6 +188,18 @@ async def travel_to_location(callback: CallbackQuery):
             boss_status = " (✅ Босс побеждён)" if boss_defeated else ""
             text += f"{status} {loc.emoji} <b>{loc.name}</b>{boss_status}\n"
             text += f"   {loc.description}\n\n"
+    
+    # Show next locked location in story mode
+    if user.game_mode == "story":
+        for loc in all_locations:
+            if loc.id not in unlocked_ids and loc.required_progress:
+                required_loc = get_location(loc.required_progress)
+                if required_loc and required_loc.id in unlocked_ids:
+                    current_progress = user.location_progress.get(loc.required_progress, 0)
+                    needed_progress = loc.progress_threshold
+                    text += f"🔒 {loc.emoji} <b>{loc.name}</b> (заблокирована)\n"
+                    text += f"   Требуется прогресс в {required_loc.emoji} {required_loc.name}: {current_progress:.1f}%/{needed_progress}%\n\n"
+                    break  # Show only next locked location
     
     try:
         await callback.message.edit_text(text, reply_markup=get_locations_keyboard(callback.from_user.id, unlocked))

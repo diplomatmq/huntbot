@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def get_main_menu_keyboard(user_id: int, game_mode: str = "free"):
+def get_main_menu_keyboard(user_id: int, game_mode: str = "free", is_injured: bool = False):
     buttons = []
 
     mode_text = "Свободный" if game_mode == "free" else "Сюжетный"
@@ -34,6 +34,15 @@ def get_main_menu_keyboard(user_id: int, game_mode: str = "free"):
             InlineKeyboardButton(text="🏆 Аукцион", callback_data=f"auction_{user_id}")
         ]
     )
+    
+    # Add heal button if injured
+    if is_injured:
+        buttons.append(
+            [
+                InlineKeyboardButton(text="💊 Вылечиться (30 ⭐)", callback_data=f"heal_{user_id}")
+            ]
+        )
+    
     buttons.append(
         [
             InlineKeyboardButton(text=f"🔄 {mode_text} режим", callback_data=f"toggle_mode_{user_id}")

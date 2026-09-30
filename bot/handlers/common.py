@@ -14,9 +14,21 @@ router = Router()
 async def cmd_start(message: Message):
     async with async_session() as session:
         user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+        
+        # Check and clear expired injury
+        from bot.database.queries import check_and_clear_injury
+        user = await check_and_clear_injury(session, user)
 
         location = get_location(user.current_location)
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
+        
+        injury_status = ""
+        if user.injured:
+            from datetime import datetime
+            time_left = user.injured_until - datetime.utcnow()
+            hours_left = int(time_left.total_seconds() // 3600)
+            minutes_left = int((time_left.total_seconds() % 3600) // 60)
+            injury_status = f"\n🩹 Ранение: {hours_left}ч {minutes_left}м"
 
         await message.answer(
             f"🦌 <b>Добро пожаловать в игру «Охота»!</b>\n\n"
@@ -27,8 +39,8 @@ async def cmd_start(message: Message):
             f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
             f"💰 Монеты: {user.coins}\n"
             f"⭐ Звёзды: {user.stars}\n"
-            f"📊 Уровень: {user.level}",
-            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode),
+            f"📊 Уровень: {user.level}{injury_status}",
+            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode, user.injured),
             reply_to_message_id=message.message_id
         )
 
@@ -47,9 +59,21 @@ def _is_menu_hant_command(text: str) -> bool:
 async def cmd_menu(message: Message):
     async with async_session() as session:
         user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+        
+        # Check and clear expired injury
+        from bot.database.queries import check_and_clear_injury
+        user = await check_and_clear_injury(session, user)
 
         location = get_location(user.current_location)
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
+        
+        injury_status = ""
+        if user.injured:
+            from datetime import datetime
+            time_left = user.injured_until - datetime.utcnow()
+            hours_left = int(time_left.total_seconds() // 3600)
+            minutes_left = int((time_left.total_seconds() % 3600) // 60)
+            injury_status = f"\n🩹 Ранение: {hours_left}ч {minutes_left}м"
 
         await message.answer(
             f"🦌 <b>Главное меню</b>\n\n"
@@ -58,8 +82,8 @@ async def cmd_menu(message: Message):
             f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
             f"💰 Монеты: {user.coins}\n"
             f"⭐ Звёзды: {user.stars}\n"
-            f"📊 Уровень: {user.level}",
-            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode),
+            f"📊 Уровень: {user.level}{injury_status}",
+            reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode, user.injured),
             reply_to_message_id=message.message_id
         )
 
@@ -138,6 +162,11 @@ async def cmd_top_players(message: Message):
 async def toggle_mode(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Check and clear expired injury
+        from bot.database.queries import check_and_clear_injury
+        user = await check_and_clear_injury(session, user)
+        
         old_mode = user.game_mode
         new_mode = "story" if user.game_mode == "free" else "free"
         user.game_mode = new_mode
@@ -189,6 +218,14 @@ async def toggle_mode(callback: CallbackQuery):
 
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
         location = get_location(user.current_location)
+        
+        injury_status = ""
+        if user.injured:
+            from datetime import datetime
+            time_left = user.injured_until - datetime.utcnow()
+            hours_left = int(time_left.total_seconds() // 3600)
+            minutes_left = int((time_left.total_seconds() % 3600) // 60)
+            injury_status = f"\n🩹 Ранение: {hours_left}ч {minutes_left}м"
 
         await callback.answer(f"✅ Режим изменён на {mode_text}!")
 
@@ -200,8 +237,8 @@ async def toggle_mode(callback: CallbackQuery):
                 f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
                 f"💰 Монеты: {user.coins}\n"
                 f"⭐ Звёзды: {user.stars}\n"
-                f"📊 Уровень: {user.level}",
-                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode)
+                f"📊 Уровень: {user.level}{injury_status}",
+                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode, user.injured)
             )
         except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):
@@ -228,9 +265,21 @@ async def show_auction(callback: CallbackQuery):
 async def show_menu(callback: CallbackQuery):
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Check and clear expired injury
+        from bot.database.queries import check_and_clear_injury
+        user = await check_and_clear_injury(session, user)
 
         location = get_location(user.current_location)
         mode_text = "Свободный режим" if user.game_mode == "free" else "Сюжетный режим"
+        
+        injury_status = ""
+        if user.injured:
+            from datetime import datetime
+            time_left = user.injured_until - datetime.utcnow()
+            hours_left = int(time_left.total_seconds() // 3600)
+            minutes_left = int((time_left.total_seconds() % 3600) // 60)
+            injury_status = f"\n🩹 Ранение: {hours_left}ч {minutes_left}м"
 
         await callback.answer()
         try:
@@ -241,8 +290,81 @@ async def show_menu(callback: CallbackQuery):
                 f"⚡ Энергия: {user.energy}/{user.max_energy}\n"
                 f"💰 Монеты: {user.coins}\n"
                 f"⭐ Звёзды: {user.stars}\n"
-                f"📊 Уровень: {user.level}",
-                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode)
+                f"📊 Уровень: {user.level}{injury_status}",
+                reply_markup=get_main_menu_keyboard(user.telegram_id, user.game_mode, user.injured)
+            )
+        except (TelegramBadRequest, TelegramRetryAfter) as e:
+            if "message is not modified" not in str(e):
+                raise
+
+
+@router.callback_query(F.data.startswith("heal_"))
+@retry(retry_count=3)
+async def heal_injury(callback: CallbackQuery):
+    """Handle heal button - create invoice for healing"""
+    from bot.utils.telegram_api import TelegramBotAPI
+    from bot.config import BOT_TOKEN
+    from bot.database.queries import create_stars_transaction
+    from datetime import datetime
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    async with async_session() as session:
+        user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)
+        
+        # Check if user is actually injured
+        if not user.injured:
+            await callback.answer("✅ Вы не ранены!", show_alert=True)
+            return
+        
+        # Calculate time left
+        time_left = user.injured_until - datetime.utcnow()
+        hours_left = int(time_left.total_seconds() // 3600)
+        minutes_left = int((time_left.total_seconds() % 3600) // 60)
+        
+        # Create invoice for healing
+        telegram_api = TelegramBotAPI(BOT_TOKEN)
+        timestamp = int(datetime.now().timestamp())
+        payload = f"heal_{callback.from_user.id}_{timestamp}"
+        heal_cost = 30
+        
+        invoice_link = await telegram_api.create_invoice_link(
+            title="Лечение",
+            description="Снять эффект ранения от животного",
+            payload=payload,
+            currency="XTR",
+            prices=[{"label": "Лечение", "amount": heal_cost}],
+            provider_token=None
+        )
+        
+        # Log transaction
+        transaction = await create_stars_transaction(
+            session,
+            user.id,
+            payload,
+            invoice_link,
+            heal_cost,
+            message_id=callback.message.message_id if hasattr(callback.message, 'message_id') else None,
+            chat_id=callback.message.chat.id if hasattr(callback.message, 'chat') else None
+        )
+        
+        # Create keyboard with payment link
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💊 Оплатить {heal_cost} ⭐", url=invoice_link)],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"menu_{callback.from_user.id}")]
+        ])
+        
+        await callback.answer()
+        try:
+            await callback.message.edit_text(
+                f"💊 <b>Лечение</b>\n\n"
+                f"🩹 Вы ранены животным!\n"
+                f"⏱️ Время до выздоровления: {hours_left}ч {minutes_left}м\n\n"
+                f"<b>Эффекты ранения:</b>\n"
+                f"• Кулдаун между охотами увеличен вдвое (20 мин вместо 10)\n"
+                f"• Стоимость пропуска кулдауна увеличена вдвое\n\n"
+                f"💰 Стоимость лечения: {heal_cost} ⭐\n"
+                f"✅ После оплаты все эффекты ранения будут сняты мгновенно!",
+                reply_markup=keyboard
             )
         except (TelegramBadRequest, TelegramRetryAfter) as e:
             if "message is not modified" not in str(e):

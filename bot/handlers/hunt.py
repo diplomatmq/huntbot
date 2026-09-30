@@ -212,6 +212,23 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                 # Animal wounded but not killed
                 logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) WOUNDED {animal.name}")
                 
+                # 70% chance of animal attacking back and injuring the player
+                attack_chance = 0.7  # 7 out of 10
+                animal_attacks = random.random() < attack_chance
+                
+                injury_text = ""
+                if animal_attacks:
+                    from bot.database.queries import apply_injury_effect
+                    user = await apply_injury_effect(session, user)
+                    logger.info(f"[HUNT] User {user.telegram_id} (@{user.username}) INJURED by {animal.name}")
+                    injury_text = (
+                        f"\n\n⚠️ <b>ЖИВОТНОЕ АТАКОВАЛО!</b>\n"
+                        f"🩹 Вы ранены! Эффекты на 15 часов:\n"
+                        f"• Кулдаун между охотами увеличен вдвое (20 минут)\n"
+                        f"• Стоимость пропуска кулдауна увеличена вдвое\n\n"
+                        f"💊 Используйте кнопку 'Вылечиться' в главном меню для снятия эффекта (30 ⭐)"
+                    )
+                
                 # Update statistics based on mode
                 if user.game_mode == "free":
                     user.total_hunts_free += 1
@@ -248,7 +265,8 @@ async def perform_hunt_logic(session, user, message_obj, telegram_user_id, is_gu
                     f"💡 Шанс убийства: {int(kill_chance * 100)}%\n"
                     f"📊 +{exp_reward} опыта за попытку\n\n"
                     f"📍 Локация: {location.emoji} {location.name}\n"
-                    f"⚡ Энергия: {user.energy}/{user.max_energy}",
+                    f"⚡ Энергия: {user.energy}/{user.max_energy}"
+                    f"{injury_text}",
                     reply_to_message_id=reply_to_message_id
                 )
                 return
@@ -613,7 +631,15 @@ async def cmd_hunt(message: Message):
         
         can_hunt_result, error_msg, cooldown_minutes, cooldown_seconds = await can_hunt(user)
         if not can_hunt_result:
-            star_cost = 2 if user.game_mode == "story" else 1
+            # Check injury effect and double cost if injured
+            from bot.database.queries import check_and_clear_injury
+            user = await check_and_clear_injury(session, user)
+            
+            # Base cost depends on game mode
+            base_cost = 2 if user.game_mode == "story" else 1
+            # Double cost if injured
+            star_cost = base_cost * 2 if user.injured else base_cost
+            
             telegram_api = TelegramBotAPI(BOT_TOKEN)
             timestamp = int(datetime.now().timestamp())
             payload = f"skip_cooldown_{message.from_user.id}_{timestamp}"
@@ -636,10 +662,15 @@ async def cmd_hunt(message: Message):
                 message_id=message.message_id,
                 chat_id=message.chat.id
             )
+            
+            injury_warning = ""
+            if user.injured:
+                injury_warning = f"\n\n🩹 <b>Вы ранены!</b> Стоимость пропуска увеличена вдвое."
 
             await message.answer(
                 f"⏳ <b>Время до следующего выстрела: {cooldown_minutes} мин {cooldown_seconds} сек</b>\n\n"
-                f"💫 Оплатите {star_cost} ⭐ чтобы пропустить кулдаун и сделать гарантированную охоту!",
+                f"💫 Оплатите {star_cost} ⭐ чтобы пропустить кулдаун и сделать гарантированную охоту!"
+                f"{injury_warning}",
                 reply_markup=get_skip_cooldown_keyboard(invoice_link, star_cost),
                 reply_to_message_id=message.message_id
             )
@@ -1152,6 +1183,47 @@ async def process_successful_payment(message: Message):
         logger.info(f"[PAYMENT] Routing to trap trigger handler")
         from bot.handlers.trap import handle_trap_trigger_payment
         await handle_trap_trigger_payment(message, payload, telegram_payment_id)
+        return
+    
+    # Handle healing payment
+    if payload.startswith("heal_"):
+        logger.info(f"[PAYMENT] Processing healing payment")
+        async with async_session() as session:
+            user = await get_or_create_user(session, message.from_user.id, message.from_user.username)
+            
+            # Check if user is injured
+            if not user.injured:
+                await message.answer("✅ Вы уже здоровы!")
+                return
+            
+            # Remove injury effect
+            from bot.database.queries import remove_injury_effect
+            user = await remove_injury_effect(session, user)
+            
+            # Update transaction status
+            result = await session.execute(
+                select(StarsTransaction).where(
+                    and_(
+                        StarsTransaction.user_id == user.id,
+                        StarsTransaction.invoice_payload == payload,
+                        StarsTransaction.status == "pending"
+                    )
+                ).order_by(StarsTransaction.created_at.desc()).limit(1)
+            )
+            transaction = result.scalar_one_or_none()
+            if transaction:
+                await update_stars_transaction(session, transaction.id, "completed", telegram_payment_id)
+            
+            logger.info(f"[PAYMENT] Healing successful for user {user.telegram_id}")
+            
+            await message.answer(
+                f"✅ <b>Лечение завершено!</b>\n\n"
+                f"💊 Вы полностью здоровы!\n"
+                f"⚡ Все эффекты ранения сняты:\n"
+                f"• Кулдаун вернулся к норме (10 минут)\n"
+                f"• Стоимость пропуска кулдауна нормализована\n\n"
+                f"🎯 Удачной охоты!"
+            )
         return
 
     logger.info(f"[PAYMENT] Processing hunt/cooldown payment")
