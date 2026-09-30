@@ -97,7 +97,11 @@ async def show_locations(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("travel_"))
 async def travel_to_location(callback: CallbackQuery):
-    location_id = callback.data.split("_")[1]  # travel_locationId_userId
+    # Parse: travel_locationId_userId
+    # Location ID may contain underscores (e.g., north_forest)
+    parts = callback.data.split("_")
+    user_id = parts[-1]  # Last part is always user_id
+    location_id = "_".join(parts[1:-1])  # Everything between travel_ and _userId
     
     async with async_session() as session:
         user = await get_or_create_user(session, callback.from_user.id, callback.from_user.username)

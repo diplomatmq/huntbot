@@ -177,10 +177,13 @@ async def show_animals(callback: CallbackQuery):
                 if location_id in ["ocean", "volcano"]:
                     continue
                 loc_name = location_names.get(location_id, location_id)
-                text += f"<b>{loc_name}</b> ({len(animals)} видов):\n"
+                
+                # Create expandable quote for each location
+                animals_list = ""
                 for animal_name, count in sorted(animals):
-                    text += f"  • {animal_name}: {count}\n"
-                text += "\n"
+                    animals_list += f"• {animal_name}: {count}\n"
+                
+                text += f"<blockquote expandable><b>{loc_name}</b> ({len(animals)} видов):\n{animals_list}</blockquote>\n"
         else:
             text += "Вы ещё не убили ни одного животного!"
         
